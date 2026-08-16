@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, FormEvent, ChangeEvent } from "react";
+import { useMemo, useRef, useState, useEffect, FormEvent, ChangeEvent } from "react";
 import { Download, Film, Pencil, Plus, RotateCcw, Save, Search, Trash2, Upload, X } from "lucide-react";
 import { Product, Size, UniverseInfo } from "@/lib/types";
 import { useCatalog } from "@/context/catalog-context";
@@ -11,10 +11,55 @@ import { ManageOptionsList } from "@/components/admin/manage-options-list";
 import { ProductVisual } from "@/components/shared/product-visual";
 import { Dropdown } from "@/components/shared/dropdown";
 import { useToast } from "@/context/toast-context";
-import { formatPrice, cn } from "@/lib/utils";
+import { formatPrice, cn, getErrorMessage } from "@/lib/utils";
 import { downloadCSV, parseCSV, productsToCSV, rowsToProducts } from "@/lib/csv";
+import { createClient } from "@/lib/supabase/client";
+import {
+  uploadProductImage,
+  uploadProductVideo,
+  deleteProductMediaMany,
+} from "@/lib/supabase/storage/product-media";
 
 const FALLBACK_PALETTE = ["#7C5CFF", "#22D3EE", "#FF3B4E", "#22C55E", "#F59E0B", "#EC4899", "#38BDF8", "#A855F7"];
+
+// Common clothing colors offered as one-click shortcuts in the "Product
+// colors" section below. Purely a convenience — the admin can still add
+// any custom color via the native color picker (see handleAddCustomColor).
+const PREDEFINED_COLORS: Product["colors"] = [
+  { name: "Black", hex: "#000000" },
+  { name: "White", hex: "#FFFFFF" },
+  { name: "Gray", hex: "#808080" },
+  { name: "Red", hex: "#EF4444" },
+  { name: "Blue", hex: "#3B82F6" },
+  { name: "Green", hex: "#22C55E" },
+  { name: "Yellow", hex: "#EAB308" },
+  { name: "Orange", hex: "#F97316" },
+  { name: "Purple", hex: "#A855F7" },
+  { name: "Pink", hex: "#EC4899" },
+  { name: "Brown", hex: "#92400E" },
+  { name: "Beige", hex: "#D4B483" },
+  { name: "Navy", hex: "#1E3A8A" },
+];
+
+const HEX_COLOR_PATTERN = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
+
+// Expands shorthand (#abc) to full 6-digit form and uppercases for
+// consistent storage/dedupe — matches the format already used throughout
+// the seed data and storefront (e.g. "#7C5CFF").
+function normalizeHex(hex: string): string {
+  const trimmed = hex.trim();
+  if (trimmed.length === 4) {
+    return (
+      "#" +
+      trimmed
+        .slice(1)
+        .split("")
+        .map((c) => c + c)
+        .join("")
+    ).toUpperCase();
+  }
+  return trimmed.toUpperCase();
+}
 
 function slugify(label: string) {
   return label
@@ -24,34 +69,63 @@ function slugify(label: string) {
     .replace(/(^-|-$)/g, "");
 }
 
+function uniqueSlug(name: string, existing: Product[]): string {
+  const root = slugify(name) || `product-${Date.now()}`;
+  const taken = new Set(existing.map((p) => p.slug));
+  if (!taken.has(root)) return root;
+  let n = 2;
+  while (taken.has(`${root}-${n}`)) n++;
+  return `${root}-${n}`;
+}
+
 const ALL_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
 
 const IMAGE_SLOT_LABELS = ["Image 1 — Main/front", "Image 2", "Image 3"] as const;
 
-// Fixed-length: always exactly 3 slots, each either a data URL or undefined
-// (empty). This is distinct from Product["images"], which only stores the
-// filled-in slots (no holes) once saved.
-type ImageSlots = [string | undefined, string | undefined, string | undefined];
+// Each image slot is either empty, holding whatever the product already
+// had saved in Storage ("existing"), or holding a newly-picked file that
+// hasn't been uploaded yet ("new" — previewed locally via an object URL,
+// uploaded only on submit). This is what lets replace/remove correctly
+// leave the old Storage object alone until the database write actually
+// succeeds (see handleSubmit).
+type MediaSlot =
+  | { kind: "empty" }
+  | { kind: "existing"; url: string }
+  | { kind: "new"; file: File; previewUrl: string };
 
-type Draft = Pick<Product, "name" | "category" | "universe" | "price" | "stock" | "artIcon" | "sizes"> & {
+type ImageSlots = [MediaSlot, MediaSlot, MediaSlot];
+
+type Draft = Pick<Product, "name" | "category" | "universe" | "price" | "stock" | "artIcon" | "sizes" | "colors"> & {
   images: ImageSlots;
-  video?: string;
+  video: MediaSlot;
 };
 
+// `universe` is intentionally left blank here — there's no universe that's
+// safe to hard-code (Supabase is the source of truth and its universe list
+// can change at any time). openNew() fills in a real default from the
+// currently-loaded universeOptions before opening the dialog; if none are
+// loaded, it shows an error instead of opening with a blank/fake universe.
 const emptyDraft: Draft = {
   name: "",
   category: "Oversized Tee",
-  universe: "gaming",
+  universe: "",
   price: 34.99,
   stock: 50,
   artIcon: "Gamepad2",
-  images: [undefined, undefined, undefined],
-  video: undefined,
+  images: [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }],
+  video: { kind: "empty" },
   sizes: [...ALL_SIZES],
+  colors: [],
 };
 
-const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB — data URLs live in local state, so keep this sane
-const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20MB — same data-URL storage pattern as images, just a bigger cap
+function slotPreviewSrc(slot: MediaSlot): string | undefined {
+  if (slot.kind === "existing") return slot.url;
+  if (slot.kind === "new") return slot.previewUrl;
+  return undefined;
+}
+
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB — client-side cap before upload
+const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20MB — matches the Storage bucket's file_size_limit
 
 
 export default function AdminProductsPage() {
@@ -79,6 +153,7 @@ export default function AdminProductsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saving, setSaving] = useState(false);
+  const [customColorHex, setCustomColorHex] = useState("#7C5CFF");
   const imageInputRefs = [
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
@@ -147,8 +222,20 @@ export default function AdminProductsPage() {
   );
 
   const openNew = () => {
+    // Default universe comes from whatever's currently loaded from
+    // Supabase (universeOptions), never a hard-coded id — that list can
+    // legitimately be empty (still loading, or every universe deleted).
+    if (universeOptions.length === 0) {
+      toast({
+        variant: "error",
+        title: "No universes available",
+        description: "Add a universe before creating a product.",
+      });
+      return;
+    }
     setEditingId(null);
-    setDraft(emptyDraft);
+    setDraft({ ...emptyDraft, universe: universeOptions[0].id });
+    setCustomColorHex("#7C5CFF");
     setDialogOpen(true);
   };
 
@@ -158,7 +245,9 @@ export default function AdminProductsPage() {
     // `image` field for products saved before this phase so their photo
     // still shows up as Image 1 when editing.
     const existingImages = p.images && p.images.length > 0 ? p.images : p.image ? [p.image] : [];
-    const slots: ImageSlots = [existingImages[0], existingImages[1], existingImages[2]];
+    const slots: ImageSlots = [0, 1, 2].map((i): MediaSlot =>
+      existingImages[i] ? { kind: "existing", url: existingImages[i] } : { kind: "empty" }
+    ) as ImageSlots;
     setDraft({
       name: p.name,
       category: p.category,
@@ -167,9 +256,11 @@ export default function AdminProductsPage() {
       stock: p.stock,
       artIcon: p.artIcon,
       images: slots,
-      video: p.video ?? undefined,
+      video: p.video ? { kind: "existing", url: p.video } : { kind: "empty" },
       sizes: p.sizes,
+      colors: p.colors ?? [],
     });
+    setCustomColorHex("#7C5CFF");
     setDialogOpen(true);
   };
 
@@ -184,6 +275,43 @@ export default function AdminProductsPage() {
     });
   };
 
+  // Adds a color (predefined or custom) to the draft, guarding against
+  // duplicates by hex value (case-insensitive — hex is always stored
+  // normalized/uppercased, but this stays defensive either way).
+  const addColor = (hex: string, name: string) => {
+    setDraft((d) => {
+      if (d.colors.some((c) => c.hex.toUpperCase() === hex.toUpperCase())) {
+        toast({ variant: "error", title: "That color is already added" });
+        return d;
+      }
+      return { ...d, colors: [...d.colors, { name, hex }] };
+    });
+  };
+
+  const removeColor = (hex: string) => {
+    setDraft((d) => ({
+      ...d,
+      colors: d.colors.filter((c) => c.hex.toUpperCase() !== hex.toUpperCase()),
+    }));
+  };
+
+  const handleAddCustomColor = () => {
+    if (!HEX_COLOR_PATTERN.test(customColorHex.trim())) {
+      toast({
+        variant: "error",
+        title: "Enter a valid hex color",
+        description: "e.g. #7C5CFF",
+      });
+      return;
+    }
+    const hex = normalizeHex(customColorHex);
+    // Custom colors picked via the color input don't have a friendly name
+    // like the predefined palette does — the hex value itself doubles as
+    // the name so it still fits Product["colors"]' { name, hex } shape.
+    addColor(hex, hex);
+    setCustomColorHex(hex);
+  };
+
   const handleImageChange = (index: 0 | 1 | 2) => (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-selecting the same file later
@@ -196,24 +324,22 @@ export default function AdminProductsPage() {
       toast({ variant: "error", title: "Image too large", description: "Max 4MB." });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDraft((d) => {
-        const images = [...d.images] as ImageSlots;
-        images[index] = reader.result as string;
-        return { ...d, images };
-      });
-    };
-    reader.onerror = () => {
-      toast({ variant: "error", title: "Couldn't read that file" });
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setDraft((d) => {
+      const prevSlot = d.images[index];
+      if (prevSlot.kind === "new") URL.revokeObjectURL(prevSlot.previewUrl);
+      const images = [...d.images] as ImageSlots;
+      images[index] = { kind: "new", file, previewUrl };
+      return { ...d, images };
+    });
   };
 
   const removeImage = (index: 0 | 1 | 2) => {
     setDraft((d) => {
+      const prevSlot = d.images[index];
+      if (prevSlot.kind === "new") URL.revokeObjectURL(prevSlot.previewUrl);
       const images = [...d.images] as ImageSlots;
-      images[index] = undefined;
+      images[index] = { kind: "empty" };
       return { ...d, images };
     });
   };
@@ -230,19 +356,36 @@ export default function AdminProductsPage() {
       toast({ variant: "error", title: "Video too large", description: "Max 20MB." });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setDraft((d) => ({ ...d, video: reader.result as string }));
-    };
-    reader.onerror = () => {
-      toast({ variant: "error", title: "Couldn't read that file" });
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setDraft((d) => {
+      if (d.video.kind === "new") URL.revokeObjectURL(d.video.previewUrl);
+      return { ...d, video: { kind: "new", file, previewUrl } };
+    });
   };
 
   const removeVideo = () => {
-    setDraft((d) => ({ ...d, video: undefined }));
+    setDraft((d) => {
+      if (d.video.kind === "new") URL.revokeObjectURL(d.video.previewUrl);
+      return { ...d, video: { kind: "empty" } };
+    });
   };
+
+  // Object URLs created for local previews are only ever needed while this
+  // dialog is open — release them once it closes so we don't leak memory
+  // across repeated add/edit sessions. Existing (already-uploaded) media
+  // uses real Storage URLs, never object URLs, so this only ever touches
+  // locally-picked-but-not-yet-saved files.
+  useEffect(() => {
+    if (dialogOpen) return;
+    draft.images.forEach((slot) => {
+      if (slot.kind === "new") URL.revokeObjectURL(slot.previewUrl);
+    });
+    if (draft.video.kind === "new") URL.revokeObjectURL(draft.video.previewUrl);
+    // Only run this cleanup on the open -> closed transition, not on every
+    // draft change while the dialog is open (which would revoke previews
+    // that are still on screen).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -251,53 +394,148 @@ export default function AdminProductsPage() {
       return;
     }
 
-    // Collapse the 3 fixed slots down to the filled-in images only, and
-    // make sure nothing invalid slipped through (defensive — slots are
-    // already validated on selection above).
-    const images = draft.images.filter(
-      (img): img is string => typeof img === "string" && img.length > 0
-    );
-    if (images.length > 3) {
-      toast({ variant: "error", title: "Only 3 product images are allowed" });
+    // Source of truth is the currently-loaded universeOptions (Supabase),
+    // never an assumption that any particular id (e.g. "gaming") exists.
+    // Catches both the empty-list case and an edited product whose
+    // universe was deleted out from under it elsewhere (the Dropdown
+    // falls back to displaying options[0] in that case without actually
+    // changing draft.universe, so this check is what actually stops the
+    // stale id from being saved).
+    if (!universeOptions.some((u) => u.id === draft.universe)) {
+      toast({ variant: "error", title: "Please select a valid universe." });
       return;
     }
 
-    const { images: _slots, video: _video, ...draftRest } = draft;
-    const mediaPatch = {
-      ...draftRest,
-      images,
-      image: images[0],
-      video: draft.video ?? null,
-    };
+    if (draft.colors.length === 0) {
+      toast({ variant: "error", title: "Select at least one color" });
+      return;
+    }
 
     setSaving(true);
+    const supabase = createClient();
+    const productId = editingId ?? `p${Date.now()}`;
+
+    // Every file uploaded during this attempt — rolled back (deleted) if
+    // the database write below fails, so a failed save never leaves
+    // orphaned files behind in Storage.
+    const uploadedThisAttempt: string[] = [];
+
     try {
+      // 1. Upload any newly-picked images/video to Storage. Existing
+      //    (already-saved) slots are left exactly as-is — nothing gets
+      //    deleted yet, even for a slot the admin just replaced or
+      //    removed, until the database write below actually succeeds.
+      const finalImages: string[] = [];
+      for (let i = 0; i < draft.images.length; i++) {
+        const slot = draft.images[i];
+        if (slot.kind === "new") {
+          const url = await uploadProductImage(supabase, productId, i as 0 | 1 | 2, slot.file);
+          uploadedThisAttempt.push(url);
+          finalImages.push(url);
+        } else if (slot.kind === "existing") {
+          finalImages.push(slot.url);
+        }
+      }
+
+      let finalVideo: string | null = null;
+      if (draft.video.kind === "new") {
+        finalVideo = await uploadProductVideo(supabase, productId, draft.video.file);
+        uploadedThisAttempt.push(finalVideo);
+      } else if (draft.video.kind === "existing") {
+        finalVideo = draft.video.url;
+      }
+
+      // 2. Work out which previously-saved media is no longer referenced
+      //    after this save (replaced or removed), so it can be cleaned up
+      //    — but only once the database write below succeeds.
+      const existing = editingId ? list.find((p) => p.id === editingId) : undefined;
+      const existingImageUrls = existing
+        ? existing.images && existing.images.length > 0
+          ? existing.images
+          : existing.image
+            ? [existing.image]
+            : []
+        : [];
+      const staleUrls: Array<string | null | undefined> = [
+        ...existingImageUrls.filter((url) => !finalImages.includes(url)),
+        existing?.video && existing.video !== finalVideo ? existing.video : undefined,
+      ];
+
+      // 3. Write the product row itself.
+      const mediaPatch = {
+        name: draft.name,
+        category: draft.category,
+        universe: draft.universe,
+        price: draft.price,
+        stock: draft.stock,
+        artIcon: draft.artIcon,
+        sizes: draft.sizes,
+        colors: draft.colors,
+        images: finalImages,
+        image: finalImages[0],
+        video: finalVideo,
+      };
+
       if (editingId) {
         await updateProduct(editingId, mediaPatch);
         toast({ variant: "success", title: "Product updated", description: draft.name });
       } else {
-        const base = list[0];
+        // Built explicitly from the form + sensible defaults — never
+        // copied from an arbitrary existing product (see PROGRESS notes:
+        // that used to borrow list[0]'s description/material/colors/tags,
+        // which could silently attach a random product's data to a new
+        // one). Colors now come from the admin's own selections in the
+        // "Product colors" section (validated non-empty above) so
+        // components that assume at least one color (e.g. the wishlist
+        // "add all to cart") keep working without a hardcoded fallback.
         const newProduct: Product = {
-          ...(base as Product),
-          ...mediaPatch,
-          id: `p${Date.now()}`,
-          slug: draft.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          id: productId,
+          slug: uniqueSlug(draft.name, list),
+          name: draft.name,
+          universe: draft.universe,
+          category: draft.category,
+          price: draft.price,
           compareAtPrice: undefined,
-          tags: [],
+          description: "",
+          material: "",
+          sizes: draft.sizes,
+          colors: draft.colors,
           rating: 0,
           reviewCount: 0,
+          stock: draft.stock,
+          tags: [],
+          artIcon: draft.artIcon,
+          images: finalImages,
+          image: finalImages[0],
+          video: finalVideo ?? undefined,
           createdAt: new Date().toISOString(),
         };
         await addProduct(newProduct);
         toast({ variant: "success", title: "Product added", description: draft.name });
       }
+
+      // 4. Only now that the database write has actually succeeded, clean
+      //    up any media that got replaced or removed. Best-effort — this
+      //    never affects the product, which is already saved either way.
+      if (staleUrls.length > 0) {
+        void deleteProductMediaMany(supabase, staleUrls);
+      }
+
       setDialogOpen(false);
     } catch (err) {
-      console.error("[admin products] Failed to save product:", err);
+      console.error("[admin products] Failed to save product:", getErrorMessage(err), err);
+
+      // The database write didn't happen (or we never got that far) —
+      // don't leave this attempt's freshly-uploaded files stranded in
+      // Storage.
+      if (uploadedThisAttempt.length > 0) {
+        void deleteProductMediaMany(supabase, uploadedThisAttempt);
+      }
+
       toast({
         variant: "error",
         title: editingId ? "Couldn't save changes" : "Couldn't add product",
-        description: "The product wasn't saved. Please try again.",
+        description: getErrorMessage(err),
       });
       // Deliberately leave the dialog open so the admin doesn't lose their
       // draft and can retry — closing here would make a failed save look
@@ -459,14 +697,15 @@ export default function AdminProductsPage() {
                   </p>
                   <div className="mt-1.5 grid grid-cols-3 gap-3">
                     {([0, 1, 2] as const).map((index) => {
-                      const slotImage = draft.images[index];
+                      const slot = draft.images[index];
+                      const slotSrc = slotPreviewSrc(slot);
                       return (
                         <div key={index} className="flex flex-col gap-1.5">
                           <span className="text-[11px] font-medium text-ink-faint">
                             {IMAGE_SLOT_LABELS[index]}
                           </span>
                           <ProductVisual
-                            image={slotImage}
+                            image={slotSrc}
                             color={resolveUniverseColor(draft.universe)}
                             icon={draft.artIcon}
                             className="aspect-square w-full"
@@ -484,9 +723,9 @@ export default function AdminProductsPage() {
                             size="sm"
                             onClick={() => imageInputRefs[index].current?.click()}
                           >
-                            <Upload className="h-3.5 w-3.5" /> {slotImage ? "Replace" : "Upload"}
+                            <Upload className="h-3.5 w-3.5" /> {slot.kind !== "empty" ? "Replace" : "Upload"}
                           </Button>
-                          {slotImage && (
+                          {slot.kind !== "empty" && (
                             <Button type="button" variant="ghost" size="sm" onClick={() => removeImage(index)}>
                               <X className="h-3.5 w-3.5" /> Remove
                             </Button>
@@ -504,9 +743,9 @@ export default function AdminProductsPage() {
                   <span className="text-xs font-medium text-ink-dim">Product video</span>
                   <p className="mt-1 text-[11px] text-ink-faint">Optional. One video max.</p>
                   <div className="mt-1.5 flex items-start gap-3">
-                    {draft.video ? (
+                    {draft.video.kind !== "empty" ? (
                       <video
-                        src={draft.video}
+                        src={slotPreviewSrc(draft.video)}
                         controls
                         className="h-20 w-32 shrink-0 rounded-xl border border-line bg-void object-cover"
                       />
@@ -530,16 +769,16 @@ export default function AdminProductsPage() {
                           size="sm"
                           onClick={() => videoInputRef.current?.click()}
                         >
-                          <Upload className="h-3.5 w-3.5" /> {draft.video ? "Replace video" : "Upload video"}
+                          <Upload className="h-3.5 w-3.5" /> {draft.video.kind !== "empty" ? "Replace video" : "Upload video"}
                         </Button>
-                        {draft.video && (
+                        {draft.video.kind !== "empty" && (
                           <Button type="button" variant="ghost" size="sm" onClick={removeVideo}>
                             <X className="h-3.5 w-3.5" /> Remove
                           </Button>
                         )}
                       </div>
                       <p className="text-[11px] text-ink-faint">
-                        MP4 or MOV, up to 20MB. {draft.video ? "" : "No video yet — this is optional."}
+                        MP4 or MOV, up to 20MB. {draft.video.kind !== "empty" ? "" : "No video yet — this is optional."}
                       </p>
                     </div>
                   </div>
@@ -607,6 +846,97 @@ export default function AdminProductsPage() {
                     Only the sizes selected here will be choosable on the product page.
                   </p>
                 </div>
+
+                <div>
+                  <span className="text-xs font-medium text-ink-dim">Product colors</span>
+                  <p className="mt-1 text-[11px] text-ink-faint">
+                    Choose from common colors or add any custom color with the picker below.
+                  </p>
+
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {PREDEFINED_COLORS.map((color) => {
+                      const active = draft.colors.some(
+                        (c) => c.hex.toUpperCase() === color.hex.toUpperCase()
+                      );
+                      return (
+                        <button
+                          key={color.hex}
+                          type="button"
+                          onClick={() => addColor(color.hex, color.name)}
+                          aria-pressed={active}
+                          title={color.name}
+                          className={cn(
+                            "flex h-9 items-center gap-2 rounded-full border pl-2 pr-3 text-xs font-medium transition-colors",
+                            active
+                              ? "border-accent-purple bg-accent-purple/15 text-accent-purple"
+                              : "border-line text-ink-faint hover:border-ink-faint hover:text-ink"
+                          )}
+                        >
+                          <span
+                            className="h-4 w-4 rounded-full border border-line/60"
+                            style={{ backgroundColor: color.hex }}
+                          />
+                          {color.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] font-medium text-ink-faint">Custom color:</span>
+                    <input
+                      type="color"
+                      value={HEX_COLOR_PATTERN.test(customColorHex.trim()) ? normalizeHex(customColorHex) : "#000000"}
+                      onChange={(e) => setCustomColorHex(e.target.value.toUpperCase())}
+                      aria-label="Custom color picker"
+                      className="h-10 w-12 cursor-pointer rounded-lg border border-line bg-void p-1"
+                    />
+                    <input
+                      type="text"
+                      value={customColorHex}
+                      onChange={(e) => setCustomColorHex(e.target.value)}
+                      placeholder="#7C5CFF"
+                      maxLength={7}
+                      className="h-10 w-28 rounded-xl border border-line bg-void px-3 text-sm font-mono uppercase text-ink focus:border-accent-cyan focus:outline-none"
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={handleAddCustomColor}>
+                      <Plus className="h-3.5 w-3.5" /> Add color
+                    </Button>
+                  </div>
+
+                  {draft.colors.length > 0 && (
+                    <div className="mt-3">
+                      <span className="text-[11px] font-medium text-ink-faint">Selected colors:</span>
+                      <div className="mt-1.5 flex flex-wrap gap-2">
+                        {draft.colors.map((color) => (
+                          <span
+                            key={color.hex}
+                            className="flex items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1.5 pr-2.5 font-mono text-xs text-ink-dim"
+                          >
+                            <span
+                              className="h-5 w-5 rounded-full border border-line/60"
+                              style={{ backgroundColor: color.hex }}
+                            />
+                            {color.hex}
+                            <button
+                              type="button"
+                              onClick={() => removeColor(color.hex)}
+                              aria-label={`Remove color ${color.hex}`}
+                              className="text-ink-faint hover:text-accent-red"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="mt-1.5 text-[11px] text-ink-faint">
+                    At least one color is required. Duplicate colors are ignored.
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3.5">
                   <label>
                     <span className="text-xs font-medium text-ink-dim">Price ($)</span>

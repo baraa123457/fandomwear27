@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
@@ -7,7 +8,20 @@ import { useCatalog } from "@/context/catalog-context";
 import { resolveIcon } from "@/lib/icon-map";
 
 export function Collections() {
-  const { universes } = useCatalog();
+  const { universes, products } = useCatalog();
+
+  // Design count per universe, derived from the currently-loaded products
+  // (Supabase, via useCatalog) rather than the static UniverseInfo.productCount
+  // field — so it can never go stale as products are added, removed, or
+  // reassigned to a different universe.
+  const designCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const product of products) {
+      counts.set(product.universe, (counts.get(product.universe) ?? 0) + 1);
+    }
+    return counts;
+  }, [products]);
+
   return (
     <section id="collections" className="border-b border-line bg-void py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-5 sm:px-8">
@@ -32,6 +46,7 @@ export function Collections() {
           {universes.map((u, i) => {
             const Icon = resolveIcon(u.icon);
             const featured = i === 0;
+            const count = designCounts.get(u.id) ?? 0;
             return (
               <motion.div
                 key={u.id}
@@ -67,7 +82,7 @@ export function Collections() {
                     <h3 className="font-display text-lg font-bold text-ink">{u.label}</h3>
                     <p className="mt-1 text-xs text-ink-faint">{u.tagline}</p>
                     <p className="mt-3 font-mono text-[11px] text-ink-faint">
-                      {u.productCount} designs
+                      {count} {count === 1 ? "design" : "designs"}
                     </p>
                   </div>
                 </Link>

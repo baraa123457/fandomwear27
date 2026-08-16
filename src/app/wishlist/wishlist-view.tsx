@@ -26,7 +26,7 @@ export default function WishlistPage() {
           name: p.name,
           price: p.price,
           size: p.sizes[Math.floor(p.sizes.length / 2)],
-          color: p.colors[0].name,
+          color: p.colors[0]?.name ?? "Default",
           universe: p.universe,
           artIcon: p.artIcon,
         },

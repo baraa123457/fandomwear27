@@ -13,6 +13,7 @@ import {
 import { products as seedProducts } from "@/lib/data/products";
 import { universes as seedUniverses, resolveUniverse } from "@/lib/data/universes";
 import { Product, UniverseInfo } from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
 import { createClient } from "@/lib/supabase/client";
 
@@ -29,6 +30,8 @@ import {
   deleteProductRow,
   upsertProducts,
 } from "@/lib/supabase/queries/products";
+
+import { deleteProductMediaMany } from "@/lib/supabase/storage/product-media";
 
 const CATEGORIES_KEY = "fandomwear:catalog-categories";
 
@@ -251,6 +254,7 @@ export function CatalogProvider({
     } catch (err) {
       console.error(
         "[catalog] Failed to save product to Supabase. Rolling back:",
+        getErrorMessage(err),
         err
       );
 
@@ -317,6 +321,7 @@ export function CatalogProvider({
       } catch (err) {
         console.error(
           "[catalog] Failed to update product in Supabase. Rolling back:",
+          getErrorMessage(err),
           err
         );
 
@@ -341,6 +346,7 @@ export function CatalogProvider({
     (id: string) => {
       const previousProducts =
         productsRef.current;
+      const deletedProduct = previousProducts.find((p) => p.id === id);
 
       /*
        * Optimistic delete.
@@ -365,9 +371,26 @@ export function CatalogProvider({
             supabase,
             id
           );
+
+          // Only clean up Storage once the row is actually gone — same
+          // "database write first, media cleanup second" ordering used by
+          // add/update, so a failed delete never leaves the catalog
+          // pointing at media that's already been removed.
+          if (deletedProduct) {
+            const mediaUrls = [
+              ...(deletedProduct.images && deletedProduct.images.length > 0
+                ? deletedProduct.images
+                : deletedProduct.image
+                  ? [deletedProduct.image]
+                  : []),
+              deletedProduct.video,
+            ];
+            void deleteProductMediaMany(supabase, mediaUrls);
+          }
         } catch (err) {
           console.error(
             "[catalog] Failed to delete product from Supabase. Rolling back:",
+            getErrorMessage(err),
             err
           );
 

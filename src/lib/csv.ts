@@ -208,13 +208,15 @@ export function rowsToProducts(rows: string[][], fallback: Product): CSVImportRe
     const tagsRaw = get("tags");
     const id = get("id") || `p${Date.now()}${i}`;
 
-    // Template fields minus `image`: a CSV row can never carry real photo data
-    // (see productsToCSV), so we never want the template's photo bleeding onto
-    // a different product. New rows get no photo (fall back to generated art);
-    // rows matching an existing id keep whatever photo that product already has,
-    // since importProducts merges onto the current record and this object simply
-    // won't include an `image` key to overwrite it with.
-    const { image: _templateImage, ...templateRest } = fallback;
+    // Template fields minus `image`/`images`/`video`: a CSV row can never
+    // carry real photo/video data (see productsToCSV — there's no column
+    // for them), so we never want one product's media bleeding onto a
+    // different product. New rows get no media (fall back to generated
+    // art); rows matching an existing id keep whatever media that product
+    // already has, since importProducts merges onto the current record
+    // and this object simply won't include an `image`/`images`/`video`
+    // key to overwrite it with.
+    const { image: _templateImage, images: _templateImages, video: _templateVideo, ...templateRest } = fallback;
 
     products.push({
       ...templateRest,

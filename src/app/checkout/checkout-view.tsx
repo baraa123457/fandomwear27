@@ -38,9 +38,53 @@ function onlyDigits(value: string, maxLen?: number) {
 function formatCardNumber(value: string) {
   return onlyDigits(value, 19).replace(/(.{4})/g, "$1 ").trim();
 }
+
+// Expiry: keep this to "MM/YY" with a month that can never become an
+// invalid value while typing. Re-derived from scratch on every keystroke
+// from the raw digits (slashes stripped), same approach the field used
+// before.
 function formatExpiry(value: string) {
   const digits = onlyDigits(value, 4);
-  return digits.length >= 3 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+  if (digits.length === 0) return "";
+
+  let month = digits.slice(0, 2);
+  const rest = digits.slice(2);
+
+  if (month.length === 1) {
+    // A first digit of 2-9 can never be the start of a valid month (the
+    // only valid months starting with a second digit are 01-09, 10-12),
+    // so pad it immediately rather than letting the person type a second
+    // digit that would make it invalid. "1" is left alone since it's a
+    // valid start for 01, 10, 11, or 12.
+    if (Number(month) > 1) {
+      month = `0${month}`;
+    }
+  } else if (month.length === 2) {
+    const value = Number(month);
+    if (value > 12) {
+      // Can't happen via normal typing once the >1 first-digit guard above
+      // is in place, but guards paste/autofill of e.g. "99".
+      month = "12";
+    }
+    // "00" is intentionally left as typed rather than force-corrected, so
+    // the person can still edit the first digit; validateExpiry() rejects
+    // it on blur/submit instead.
+  }
+
+  return rest ? `${month}/${rest}` : month;
+}
+
+function validateExpiry(expiry: string): string | undefined {
+  const match = /^(\d{2})\/(\d{2})$/.exec(expiry);
+  if (!match) return "Enter expiry as MM/YY";
+  const month = Number(match[1]);
+  if (month < 1 || month > 12) return "Enter a valid month (01–12)";
+  return undefined;
+}
+
+function validateCvc(cvc: string): string | undefined {
+  if (!/^\d{3}$/.test(cvc)) return "CVC must be exactly 3 digits";
+  return undefined;
 }
 
 export default function CheckoutPage() {
@@ -52,6 +96,8 @@ export default function CheckoutPage() {
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
   const [couponInput, setCouponInput] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+  const [cardErrors, setCardErrors] = useState<{ expiry?: string; cvc?: string }>({});
+  const [cardTouched, setCardTouched] = useState<{ expiry?: boolean; cvc?: boolean }>({});
 
   const [form, setForm] = useState({
     fullName: "",
@@ -89,6 +135,22 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (paymentMethod === "card") {
+      const expiryError = validateExpiry(form.expiry);
+      const cvcError = validateCvc(form.cvc);
+      if (expiryError || cvcError) {
+        setCardTouched({ expiry: true, cvc: true });
+        setCardErrors({ expiry: expiryError, cvc: cvcError });
+        toast({
+          variant: "error",
+          title: "Check your card details",
+          description: expiryError ?? cvcError,
+        });
+        return;
+      }
+    }
+
     setPlacing(true);
     close();
 
@@ -118,6 +180,11 @@ export default function CheckoutPage() {
       });
       setConfirmedOrder(order);
       clearCart();
+      // Card details are never sent to placeOrder/Supabase in the first
+      // place (see the call above), but clear them from this component's
+      // own state too now that the form submission they were needed for
+      // is done, rather than leaving them sitting in memory.
+      setForm((f) => ({ ...f, cardNumber: "", expiry: "", cvc: "" }));
     } catch (err) {
       console.error("[checkout] Failed to place order:", err);
       toast({
@@ -270,16 +337,38 @@ export default function CheckoutPage() {
                     placeholder="MM/YY"
                     maxLength={5}
                     value={form.expiry}
-                    onChange={(e) => setForm((f) => ({ ...f, expiry: formatExpiry(e.target.value) }))}
+                    error={cardTouched.expiry ? cardErrors.expiry : undefined}
+                    onChange={(e) => {
+                      const next = formatExpiry(e.target.value);
+                      setForm((f) => ({ ...f, expiry: next }));
+                      if (cardTouched.expiry) {
+                        setCardErrors((errs) => ({ ...errs, expiry: validateExpiry(next) }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setCardTouched((t) => ({ ...t, expiry: true }));
+                      setCardErrors((errs) => ({ ...errs, expiry: validateExpiry(form.expiry) }));
+                    }}
                   />
                   <Field
                     label="CVC"
                     required
                     inputMode="numeric"
                     placeholder="123"
-                    maxLength={4}
+                    maxLength={3}
                     value={form.cvc}
-                    onChange={(e) => setForm((f) => ({ ...f, cvc: onlyDigits(e.target.value, 4) }))}
+                    error={cardTouched.cvc ? cardErrors.cvc : undefined}
+                    onChange={(e) => {
+                      const next = onlyDigits(e.target.value, 3);
+                      setForm((f) => ({ ...f, cvc: next }));
+                      if (cardTouched.cvc) {
+                        setCardErrors((errs) => ({ ...errs, cvc: validateCvc(next) }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setCardTouched((t) => ({ ...t, cvc: true }));
+                      setCardErrors((errs) => ({ ...errs, cvc: validateCvc(form.cvc) }));
+                    }}
                   />
                 </div>
               </>
@@ -379,15 +468,25 @@ export default function CheckoutPage() {
 function Field({
   label,
   className,
+  error,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string; className?: string }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  className?: string;
+  error?: string;
+}) {
   return (
     <label className={className}>
       <span className="text-xs font-medium text-ink-dim">{label}</span>
       <input
         {...props}
-        className="mt-1.5 h-11 w-full rounded-xl border border-line bg-void px-4 text-sm text-ink placeholder:text-ink-faint focus:border-accent-cyan focus:outline-none"
+        aria-invalid={error ? true : undefined}
+        className={cn(
+          "mt-1.5 h-11 w-full rounded-xl border bg-void px-4 text-sm text-ink placeholder:text-ink-faint focus:outline-none",
+          error ? "border-accent-red focus:border-accent-red" : "border-line focus:border-accent-cyan"
+        )}
       />
+      {error && <p className="mt-1.5 text-xs text-accent-red">{error}</p>}
     </label>
   );
 }

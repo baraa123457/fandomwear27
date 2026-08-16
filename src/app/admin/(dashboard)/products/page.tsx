@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, FormEvent, ChangeEvent } from "react";
-import { Download, Pencil, Plus, RotateCcw, Save, Search, Trash2, Upload, X } from "lucide-react";
+import { Download, Film, Pencil, Plus, RotateCcw, Save, Search, Trash2, Upload, X } from "lucide-react";
 import { Product, Size, UniverseInfo } from "@/lib/types";
 import { useCatalog } from "@/context/catalog-context";
 import { Dialog, DialogTrigger, DialogContent } from "@/components/ui/dialog";
@@ -26,8 +26,16 @@ function slugify(label: string) {
 
 const ALL_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
 
+const IMAGE_SLOT_LABELS = ["Image 1 — Main/front", "Image 2", "Image 3"] as const;
+
+// Fixed-length: always exactly 3 slots, each either a data URL or undefined
+// (empty). This is distinct from Product["images"], which only stores the
+// filled-in slots (no holes) once saved.
+type ImageSlots = [string | undefined, string | undefined, string | undefined];
+
 type Draft = Pick<Product, "name" | "category" | "universe" | "price" | "stock" | "artIcon" | "sizes"> & {
-  image?: string;
+  images: ImageSlots;
+  video?: string;
 };
 
 const emptyDraft: Draft = {
@@ -37,11 +45,14 @@ const emptyDraft: Draft = {
   price: 34.99,
   stock: 50,
   artIcon: "Gamepad2",
-  image: undefined,
+  images: [undefined, undefined, undefined],
+  video: undefined,
   sizes: [...ALL_SIZES],
 };
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB — data URLs live in local state, so keep this sane
+const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20MB — same data-URL storage pattern as images, just a bigger cap
+
 
 export default function AdminProductsPage() {
   const { toast } = useToast();
@@ -67,7 +78,13 @@ export default function AdminProductsPage() {
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
+  const imageInputRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ] as const;
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
   const addUniverseOption = (label: string) => {
@@ -137,6 +154,11 @@ export default function AdminProductsPage() {
 
   const openEdit = (p: Product) => {
     setEditingId(p.id);
+    // Prefer the new `images` array; fall back to the legacy single
+    // `image` field for products saved before this phase so their photo
+    // still shows up as Image 1 when editing.
+    const existingImages = p.images && p.images.length > 0 ? p.images : p.image ? [p.image] : [];
+    const slots: ImageSlots = [existingImages[0], existingImages[1], existingImages[2]];
     setDraft({
       name: p.name,
       category: p.category,
@@ -144,7 +166,8 @@ export default function AdminProductsPage() {
       price: p.price,
       stock: p.stock,
       artIcon: p.artIcon,
-      image: p.image,
+      images: slots,
+      video: p.video ?? undefined,
       sizes: p.sizes,
     });
     setDialogOpen(true);
@@ -161,7 +184,7 @@ export default function AdminProductsPage() {
     });
   };
 
-  const handlePhotoChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = (index: 0 | 1 | 2) => (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-selecting the same file later
     if (!file) return;
@@ -175,7 +198,11 @@ export default function AdminProductsPage() {
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setDraft((d) => ({ ...d, image: reader.result as string }));
+      setDraft((d) => {
+        const images = [...d.images] as ImageSlots;
+        images[index] = reader.result as string;
+        return { ...d, images };
+      });
     };
     reader.onerror = () => {
       toast({ variant: "error", title: "Couldn't read that file" });
@@ -183,28 +210,101 @@ export default function AdminProductsPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (editingId) {
-      updateProduct(editingId, draft);
-      toast({ variant: "success", title: "Product updated", description: draft.name });
-    } else {
-      const base = list[0];
-      const newProduct: Product = {
-        ...(base as Product),
-        ...draft,
-        id: `p${Date.now()}`,
-        slug: draft.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-        compareAtPrice: undefined,
-        tags: [],
-        rating: 0,
-        reviewCount: 0,
-        createdAt: new Date().toISOString(),
-      };
-      addProduct(newProduct);
-      toast({ variant: "success", title: "Product added", description: draft.name });
+  const removeImage = (index: 0 | 1 | 2) => {
+    setDraft((d) => {
+      const images = [...d.images] as ImageSlots;
+      images[index] = undefined;
+      return { ...d, images };
+    });
+  };
+
+  const handleVideoChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      toast({ variant: "error", title: "That's not a video file" });
+      return;
     }
-    setDialogOpen(false);
+    if (file.size > MAX_VIDEO_BYTES) {
+      toast({ variant: "error", title: "Video too large", description: "Max 20MB." });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDraft((d) => ({ ...d, video: reader.result as string }));
+    };
+    reader.onerror = () => {
+      toast({ variant: "error", title: "Couldn't read that file" });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeVideo = () => {
+    setDraft((d) => ({ ...d, video: undefined }));
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!draft.name.trim()) {
+      toast({ variant: "error", title: "Product name is required" });
+      return;
+    }
+
+    // Collapse the 3 fixed slots down to the filled-in images only, and
+    // make sure nothing invalid slipped through (defensive — slots are
+    // already validated on selection above).
+    const images = draft.images.filter(
+      (img): img is string => typeof img === "string" && img.length > 0
+    );
+    if (images.length > 3) {
+      toast({ variant: "error", title: "Only 3 product images are allowed" });
+      return;
+    }
+
+    const { images: _slots, video: _video, ...draftRest } = draft;
+    const mediaPatch = {
+      ...draftRest,
+      images,
+      image: images[0],
+      video: draft.video ?? null,
+    };
+
+    setSaving(true);
+    try {
+      if (editingId) {
+        await updateProduct(editingId, mediaPatch);
+        toast({ variant: "success", title: "Product updated", description: draft.name });
+      } else {
+        const base = list[0];
+        const newProduct: Product = {
+          ...(base as Product),
+          ...mediaPatch,
+          id: `p${Date.now()}`,
+          slug: draft.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+          compareAtPrice: undefined,
+          tags: [],
+          rating: 0,
+          reviewCount: 0,
+          createdAt: new Date().toISOString(),
+        };
+        await addProduct(newProduct);
+        toast({ variant: "success", title: "Product added", description: draft.name });
+      }
+      setDialogOpen(false);
+    } catch (err) {
+      console.error("[admin products] Failed to save product:", err);
+      toast({
+        variant: "error",
+        title: editingId ? "Couldn't save changes" : "Couldn't add product",
+        description: "The product wasn't saved. Please try again.",
+      });
+      // Deliberately leave the dialog open so the admin doesn't lose their
+      // draft and can retry — closing here would make a failed save look
+      // like it succeeded.
+    } finally {
+      setSaving(false);
+    }
   };
 
   const requestDelete = (p: Product) => {
@@ -353,20 +453,74 @@ export default function AdminProductsPage() {
                 </label>
 
                 <div>
-                  <span className="text-xs font-medium text-ink-dim">Photo</span>
-                  <div className="mt-1.5 flex items-center gap-3">
-                    <ProductVisual
-                      image={draft.image}
-                      color={resolveUniverseColor(draft.universe)}
-                      icon={draft.artIcon}
-                      className="h-20 w-20 shrink-0"
-                    />
+                  <span className="text-xs font-medium text-ink-dim">Product images</span>
+                  <p className="mt-1 text-[11px] text-ink-faint">
+                    Up to 3 photos. Image 1 is the main/front photo shown across the storefront.
+                  </p>
+                  <div className="mt-1.5 grid grid-cols-3 gap-3">
+                    {([0, 1, 2] as const).map((index) => {
+                      const slotImage = draft.images[index];
+                      return (
+                        <div key={index} className="flex flex-col gap-1.5">
+                          <span className="text-[11px] font-medium text-ink-faint">
+                            {IMAGE_SLOT_LABELS[index]}
+                          </span>
+                          <ProductVisual
+                            image={slotImage}
+                            color={resolveUniverseColor(draft.universe)}
+                            icon={draft.artIcon}
+                            className="aspect-square w-full"
+                          />
+                          <input
+                            ref={imageInputRefs[index]}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageChange(index)}
+                            className="hidden"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => imageInputRefs[index].current?.click()}
+                          >
+                            <Upload className="h-3.5 w-3.5" /> {slotImage ? "Replace" : "Upload"}
+                          </Button>
+                          {slotImage && (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => removeImage(index)}>
+                              <X className="h-3.5 w-3.5" /> Remove
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-ink-faint">
+                    JPG or PNG, up to 4MB each. Slots left empty use a placeholder until a photo is uploaded.
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-xs font-medium text-ink-dim">Product video</span>
+                  <p className="mt-1 text-[11px] text-ink-faint">Optional. One video max.</p>
+                  <div className="mt-1.5 flex items-start gap-3">
+                    {draft.video ? (
+                      <video
+                        src={draft.video}
+                        controls
+                        className="h-20 w-32 shrink-0 rounded-xl border border-line bg-void object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-xl border border-dashed border-line text-ink-faint">
+                        <Film className="h-6 w-6" />
+                      </div>
+                    )}
                     <div className="flex flex-1 flex-col gap-1.5">
                       <input
-                        ref={fileInputRef}
+                        ref={videoInputRef}
                         type="file"
-                        accept="image/*"
-                        onChange={handlePhotoChange}
+                        accept="video/*"
+                        onChange={handleVideoChange}
                         className="hidden"
                       />
                       <div className="flex flex-wrap gap-2">
@@ -374,23 +528,18 @@ export default function AdminProductsPage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={() => videoInputRef.current?.click()}
                         >
-                          <Upload className="h-3.5 w-3.5" /> {draft.image ? "Replace photo" : "Upload photo"}
+                          <Upload className="h-3.5 w-3.5" /> {draft.video ? "Replace video" : "Upload video"}
                         </Button>
-                        {draft.image && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDraft((d) => ({ ...d, image: undefined }))}
-                          >
+                        {draft.video && (
+                          <Button type="button" variant="ghost" size="sm" onClick={removeVideo}>
                             <X className="h-3.5 w-3.5" /> Remove
                           </Button>
                         )}
                       </div>
                       <p className="text-[11px] text-ink-faint">
-                        JPG or PNG, up to 4MB. {draft.image ? "" : "No photo yet — a placeholder will be used until one is uploaded."}
+                        MP4 or MOV, up to 20MB. {draft.video ? "" : "No video yet — this is optional."}
                       </p>
                     </div>
                   </div>
@@ -483,8 +632,8 @@ export default function AdminProductsPage() {
                     />
                   </label>
                 </div>
-                <Button type="submit" variant="accent" size="md" className="mt-2">
-                  {editingId ? "Save changes" : "Add product"}
+                <Button type="submit" variant="accent" size="md" className="mt-2" disabled={saving}>
+                  {saving ? "Saving..." : editingId ? "Save changes" : "Add product"}
                 </Button>
               </form>
             </DialogContent>

@@ -32,7 +32,15 @@ export interface Product {
   artIcon: string;
   /** Optional uploaded product photo (data URL). When present, this takes
    *  priority over the generated `artIcon` artwork everywhere the product
-   *  is displayed. */
+   *  is displayed. Kept in sync with `images[0]` for backward compatibility
+   *  with display components that only know about a single photo. */
   image?: string;
+  /** Up to 3 uploaded product photos (data URLs or storage URLs), ordered
+   *  [main/front, second, third]. `images[0]` is always mirrored to
+   *  `image`. */
+  images?: string[];
+  /** Optional single product video (data URL or storage URL). Never
+   *  required. */
+  video?: string | null;
   createdAt: string;
 }

@@ -14,7 +14,11 @@ export default function AdminInventoryPage() {
   const adjust = (id: string, delta: number) => {
     const current = products.find((p) => p.id === id);
     if (!current) return;
-    updateProduct(id, { stock: Math.max(0, current.stock + delta) });
+    updateProduct(id, { stock: Math.max(0, current.stock + delta) }).catch(() => {
+      // catalog-context already rolls back optimistic state and logs the
+      // error; nothing extra to do here beyond not letting the rejection
+      // go unhandled.
+    });
   };
 
   const lowStockCount = items.filter((i) => i.status !== "healthy").length;

@@ -68,8 +68,8 @@ interface CatalogContextValue {
   universes: UniverseInfo[];
   categories: string[];
 
-  addProduct: (product: Product) => void;
-  updateProduct: (id: string, patch: Partial<Product>) => void;
+  addProduct: (product: Product) => Promise<void>;
+  updateProduct: (id: string, patch: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => void;
 
   addUniverse: (universe: UniverseInfo) => void;
@@ -230,7 +230,7 @@ export function CatalogProvider({
    * ADD PRODUCT
    */
 
-  const addProduct = useCallback((product: Product) => {
+  const addProduct = useCallback(async (product: Product) => {
     /*
      * Optimistic UI update.
      */
@@ -241,33 +241,38 @@ export function CatalogProvider({
      * Save to Supabase.
      */
 
-    (async () => {
-      try {
-        const supabase = createClient();
+    try {
+      const supabase = createClient();
 
-        await insertProduct(
-          supabase,
-          product
-        );
-      } catch (err) {
-        console.error(
-          "[catalog] Failed to save product to Supabase. Rolling back:",
-          err
-        );
+      await insertProduct(
+        supabase,
+        product
+      );
+    } catch (err) {
+      console.error(
+        "[catalog] Failed to save product to Supabase. Rolling back:",
+        err
+      );
 
-        /*
-         * Restore previous state.
-         *
-         * We remove only the product that failed.
-         */
+      /*
+       * Restore previous state.
+       *
+       * We remove only the product that failed.
+       */
 
-        setProducts((prev) =>
-          prev.filter(
-            (p) => p.id !== product.id
-          )
-        );
-      }
-    })();
+      setProducts((prev) =>
+        prev.filter(
+          (p) => p.id !== product.id
+        )
+      );
+
+      /*
+       * Rethrow so the caller (e.g. the admin form) knows the save
+       * failed and can show an accurate error state instead of a
+       * false "saved" confirmation.
+       */
+      throw err;
+    }
   }, []);
 
   /*
@@ -275,7 +280,7 @@ export function CatalogProvider({
    */
 
   const updateProduct = useCallback(
-    (
+    async (
       id: string,
       patch: Partial<Product>
     ) => {
@@ -301,24 +306,29 @@ export function CatalogProvider({
        * Persist update.
        */
 
-      (async () => {
-        try {
-          const supabase = createClient();
+      try {
+        const supabase = createClient();
 
-          await updateProductRow(
-            supabase,
-            id,
-            patch
-          );
-        } catch (err) {
-          console.error(
-            "[catalog] Failed to update product in Supabase. Rolling back:",
-            err
-          );
+        await updateProductRow(
+          supabase,
+          id,
+          patch
+        );
+      } catch (err) {
+        console.error(
+          "[catalog] Failed to update product in Supabase. Rolling back:",
+          err
+        );
 
-          setProducts(previousProducts);
-        }
-      })();
+        setProducts(previousProducts);
+
+        /*
+         * Rethrow so the caller (e.g. the admin form) knows the save
+         * failed and can show an accurate error state instead of a
+         * false "saved" confirmation.
+         */
+        throw err;
+      }
     },
     []
   );

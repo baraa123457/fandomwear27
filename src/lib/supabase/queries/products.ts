@@ -28,6 +28,8 @@ function rowToProduct(row: ProductRow): Product {
     tags: row.tags as Product["tags"],
     artIcon: row.art_icon,
     image: row.image ?? undefined,
+    images: row.images ?? [],
+    video: row.video ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -50,7 +52,11 @@ function productToRow(product: Product): ProductInsert {
     stock: product.stock,
     tags: product.tags,
     art_icon: product.artIcon,
-    image: product.image ?? null,
+    // `image` mirrors images[0] for backward compatibility with display
+    // components that only read the single legacy field.
+    image: product.images?.[0] ?? product.image ?? null,
+    images: product.images ?? (product.image ? [product.image] : []),
+    video: product.video ?? null,
     created_at: product.createdAt,
     is_active: true,
   };
@@ -141,8 +147,18 @@ export async function updateProductRow(
     rowPatch.art_icon = patch.artIcon;
   }
 
-  if (patch.image !== undefined) {
+  if (patch.images !== undefined) {
+    rowPatch.images = patch.images ?? [];
+    // Keep the legacy single-image column in sync so components that
+    // still read `image` directly (product cards, gallery, etc.) don't
+    // fall out of sync with the new media the admin just saved.
+    rowPatch.image = patch.images?.[0] ?? null;
+  } else if (patch.image !== undefined) {
     rowPatch.image = patch.image ?? null;
+  }
+
+  if (patch.video !== undefined) {
+    rowPatch.video = patch.video ?? null;
   }
 
   const { data, error } = await client

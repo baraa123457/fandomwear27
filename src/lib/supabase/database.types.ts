@@ -213,6 +213,7 @@ export type Database = {
           description: string
           id: string
           image: string | null
+          images: string[]
           is_active: boolean
           material: string
           name: string
@@ -225,6 +226,7 @@ export type Database = {
           tags: Database["public"]["Enums"]["product_tag"][]
           universe: string
           updated_at: string
+          video: string | null
         }
         Insert: {
           art_icon?: string
@@ -235,6 +237,7 @@ export type Database = {
           description?: string
           id: string
           image?: string | null
+          images?: string[]
           is_active?: boolean
           material?: string
           name: string
@@ -247,6 +250,7 @@ export type Database = {
           tags?: Database["public"]["Enums"]["product_tag"][]
           universe: string
           updated_at?: string
+          video?: string | null
         }
         Update: {
           art_icon?: string
@@ -257,6 +261,7 @@ export type Database = {
           description?: string
           id?: string
           image?: string | null
+          images?: string[]
           is_active?: boolean
           material?: string
           name?: string
@@ -269,6 +274,7 @@ export type Database = {
           tags?: Database["public"]["Enums"]["product_tag"][]
           universe?: string
           updated_at?: string
+          video?: string | null
         }
         Relationships: [
           {

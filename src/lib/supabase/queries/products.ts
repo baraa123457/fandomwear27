@@ -37,7 +37,6 @@ function productToRow(product: Product): ProductInsert {
     id: product.id,
     slug: product.slug,
     name: product.name,
-    is_active: true,
     universe: product.universe,
     category: product.category,
     price: product.price,
@@ -53,13 +52,14 @@ function productToRow(product: Product): ProductInsert {
     art_icon: product.artIcon,
     image: product.image ?? null,
     created_at: product.createdAt,
+    is_active: true,
   };
 }
 
 /**
  * Fetch only active products.
- * Archived products (is_active = false) are hidden from the storefront
- * and normal catalog views.
+ * Archived products (is_active = false) are hidden from
+ * the storefront and normal catalog views.
  */
 export async function fetchProducts(client: Client): Promise<Product[]> {
   const { data, error } = await client
@@ -69,6 +69,7 @@ export async function fetchProducts(client: Client): Promise<Product[]> {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
+
   return (data ?? []).map(rowToProduct);
 }
 
@@ -83,6 +84,7 @@ export async function insertProduct(
     .single();
 
   if (error) throw error;
+
   return rowToProduct(data);
 }
 
@@ -103,16 +105,45 @@ export async function updateProductRow(
     rowPatch.compare_at_price = patch.compareAtPrice ?? null;
   }
 
-  if (patch.description !== undefined) rowPatch.description = patch.description;
-  if (patch.material !== undefined) rowPatch.material = patch.material;
-  if (patch.sizes !== undefined) rowPatch.sizes = patch.sizes;
-  if (patch.colors !== undefined) rowPatch.colors = patch.colors;
-  if (patch.rating !== undefined) rowPatch.rating = patch.rating;
-  if (patch.reviewCount !== undefined) rowPatch.review_count = patch.reviewCount;
-  if (patch.stock !== undefined) rowPatch.stock = patch.stock;
-  if (patch.tags !== undefined) rowPatch.tags = patch.tags;
-  if (patch.artIcon !== undefined) rowPatch.art_icon = patch.artIcon;
-  if (patch.image !== undefined) rowPatch.image = patch.image ?? null;
+  if (patch.description !== undefined) {
+    rowPatch.description = patch.description;
+  }
+
+  if (patch.material !== undefined) {
+    rowPatch.material = patch.material;
+  }
+
+  if (patch.sizes !== undefined) {
+    rowPatch.sizes = patch.sizes;
+  }
+
+  if (patch.colors !== undefined) {
+    rowPatch.colors = patch.colors;
+  }
+
+  if (patch.rating !== undefined) {
+    rowPatch.rating = patch.rating;
+  }
+
+  if (patch.reviewCount !== undefined) {
+    rowPatch.review_count = patch.reviewCount;
+  }
+
+  if (patch.stock !== undefined) {
+    rowPatch.stock = patch.stock;
+  }
+
+  if (patch.tags !== undefined) {
+    rowPatch.tags = patch.tags;
+  }
+
+  if (patch.artIcon !== undefined) {
+    rowPatch.art_icon = patch.artIcon;
+  }
+
+  if (patch.image !== undefined) {
+    rowPatch.image = patch.image ?? null;
+  }
 
   const { data, error } = await client
     .from("products")
@@ -122,6 +153,7 @@ export async function updateProductRow(
     .single();
 
   if (error) throw error;
+
   return rowToProduct(data);
 }
 
@@ -173,16 +205,21 @@ export async function restoreProductRow(
   if (error) throw error;
 }
 
-/** Insert-or-update by id, used by the admin CSV importer. */
+/**
+ * Insert-or-update by id, used by the admin CSV importer.
+ */
 export async function upsertProducts(
   client: Client,
   products: Product[]
 ): Promise<Product[]> {
   const { data, error } = await client
     .from("products")
-    .upsert(products.map(productToRow), { onConflict: "id" })
+    .upsert(products.map(productToRow), {
+      onConflict: "id",
+    })
     .select();
 
   if (error) throw error;
+
   return (data ?? []).map(rowToProduct);
 }

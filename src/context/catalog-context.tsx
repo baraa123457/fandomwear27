@@ -83,6 +83,7 @@ interface CatalogContextValue {
 
   getUniverse: (id: string) => UniverseInfo;
   getProductBySlug: (slug: string) => Product | undefined;
+
   getNewArrivals: (limit?: number) => Product[];
   getBestSellers: (limit?: number) => Product[];
   getFeatured: (limit?: number) => Product[];
@@ -96,20 +97,36 @@ export function CatalogProvider({
   children: React.ReactNode;
 }) {
   /*
-   * Supabase is the source of truth.
+   * IMPORTANT:
    *
-   * Seed data is only used if Supabase cannot be reached.
+   * Supabase is the source of truth for products and universes.
+   *
+   * We start with the seed data only so the UI has something to render
+   * while Supabase is loading or temporarily unavailable.
+   *
+   * Once Supabase responds, its data replaces the seed data.
    */
-  const [products, setProducts] = useState<Product[]>(seedProducts);
-  const [universes, setUniverses] = useState<UniverseInfo[]>(seedUniverses);
-  const [categories, setCategories] = useState<string[]>(seedCategories);
 
-  const productsRef = useRef(products);
-  const universesRef = useRef(universes);
+  const [products, setProducts] = useState<Product[]>(seedProducts);
+
+  const [universes, setUniverses] = useState<UniverseInfo[]>([]);
+
+  const [categories, setCategories] =
+    useState<string[]>(seedCategories);
+
+  /*
+   * Keep refs synchronized with the latest state.
+   *
+   * These are used for rollback when a Supabase mutation fails.
+   */
+
+  const productsRef = useRef<Product[]>(seedProducts);
 
   useEffect(() => {
     productsRef.current = products;
   }, [products]);
+
+  const universesRef = useRef<UniverseInfo[]>([]);
 
   useEffect(() => {
     universesRef.current = universes;
@@ -118,9 +135,13 @@ export function CatalogProvider({
   /*
    * Categories are still stored locally for now.
    */
+
   useEffect(() => {
     setCategories(
-      loadFromStorage(CATEGORIES_KEY, seedCategories)
+      loadFromStorage(
+        CATEGORIES_KEY,
+        seedCategories
+      )
     );
   }, []);
 
@@ -128,36 +149,37 @@ export function CatalogProvider({
    * Load products from Supabase.
    *
    * IMPORTANT:
-   * We intentionally DO NOT check rows.length > 0.
+   * An empty Supabase result is valid.
    *
-   * If Supabase returns [] that means the table is empty,
-   * and the UI must also become empty.
+   * We therefore DO NOT keep the seed products when Supabase
+   * successfully returns zero rows.
+   *
+   * This prevents deleted database products from coming back.
    */
+
   useEffect(() => {
     let cancelled = false;
 
-    const loadProducts = async () => {
+    (async () => {
       try {
         const supabase = createClient();
+
         const rows = await fetchProducts(supabase);
 
         if (!cancelled) {
           setProducts(rows);
-          productsRef.current = rows;
         }
       } catch (err) {
-        console.error(
-          "[catalog] Failed to load products from Supabase:",
+        console.warn(
+          "[catalog] Supabase products fetch failed. Using seed products as fallback:",
           err
         );
 
-        /*
-         * Only keep the seed data if Supabase itself failed.
-         */
+        if (!cancelled) {
+          setProducts(seedProducts);
+        }
       }
-    };
-
-    loadProducts();
+    })();
 
     return () => {
       cancelled = true;
@@ -167,30 +189,37 @@ export function CatalogProvider({
   /*
    * Load universes from Supabase.
    *
-   * Same rule as products:
-   * an empty array is a valid result.
+   * IMPORTANT:
+   * We DO NOT fall back to seedUniverses when Supabase
+   * successfully returns an empty list.
+   *
+   * Therefore, if you deleted potter/anime/gaming/etc.
+   * from Supabase, they stay deleted.
    */
+
   useEffect(() => {
     let cancelled = false;
 
-    const loadUniverses = async () => {
+    (async () => {
       try {
         const supabase = createClient();
+
         const rows = await fetchUniverses(supabase);
 
         if (!cancelled) {
           setUniverses(rows);
-          universesRef.current = rows;
         }
       } catch (err) {
-        console.error(
-          "[catalog] Failed to load universes from Supabase:",
+        console.warn(
+          "[catalog] Supabase universes fetch failed. Using seed universes as fallback:",
           err
         );
-      }
-    };
 
-    loadUniverses();
+        if (!cancelled) {
+          setUniverses(seedUniverses);
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -200,44 +229,43 @@ export function CatalogProvider({
   /*
    * ADD PRODUCT
    */
-  const addProduct = useCallback((product: Product) => {
-    const previousProducts = productsRef.current;
 
+  const addProduct = useCallback((product: Product) => {
     /*
      * Optimistic UI update.
      */
+
     setProducts((prev) => [product, ...prev]);
 
     /*
-     * Persist to Supabase.
+     * Save to Supabase.
      */
+
     (async () => {
       try {
         const supabase = createClient();
 
-        const savedProduct = await insertProduct(
+        await insertProduct(
           supabase,
           product
         );
-
-        /*
-         * Make sure local state uses the actual saved row.
-         */
-        setProducts((prev) =>
-          prev.map((p) =>
-            p.id === product.id ? savedProduct : p
-          )
-        );
       } catch (err) {
         console.error(
-          "[catalog] Failed to save product to Supabase:",
+          "[catalog] Failed to save product to Supabase. Rolling back:",
           err
         );
 
         /*
-         * Roll back only if the insert failed.
+         * Restore previous state.
+         *
+         * We remove only the product that failed.
          */
-        setProducts(previousProducts);
+
+        setProducts((prev) =>
+          prev.filter(
+            (p) => p.id !== product.id
+          )
+        );
       }
     })();
   }, []);
@@ -245,50 +273,49 @@ export function CatalogProvider({
   /*
    * UPDATE PRODUCT
    */
+
   const updateProduct = useCallback(
-    (id: string, patch: Partial<Product>) => {
-      const previousProducts = productsRef.current;
+    (
+      id: string,
+      patch: Partial<Product>
+    ) => {
+      const previousProducts =
+        productsRef.current;
 
       /*
        * Optimistic update.
        */
+
       setProducts((prev) =>
         prev.map((product) =>
           product.id === id
-            ? { ...product, ...patch }
+            ? {
+                ...product,
+                ...patch,
+              }
             : product
         )
       );
+
+      /*
+       * Persist update.
+       */
 
       (async () => {
         try {
           const supabase = createClient();
 
-          const updatedProduct = await updateProductRow(
+          await updateProductRow(
             supabase,
             id,
             patch
           );
-
-          /*
-           * Replace optimistic version with database version.
-           */
-          setProducts((prev) =>
-            prev.map((product) =>
-              product.id === id
-                ? updatedProduct
-                : product
-            )
-          );
         } catch (err) {
           console.error(
-            "[catalog] Failed to update product in Supabase:",
+            "[catalog] Failed to update product in Supabase. Rolling back:",
             err
           );
 
-          /*
-           * Roll back only when Supabase update fails.
-           */
           setProducts(previousProducts);
         }
       })();
@@ -299,85 +326,127 @@ export function CatalogProvider({
   /*
    * DELETE PRODUCT
    */
-  const deleteProduct = useCallback((id: string) => {
-    const previousProducts = productsRef.current;
 
-    /*
-     * Remove immediately from UI.
-     */
-    setProducts((prev) =>
-      prev.filter((product) => product.id !== id)
-    );
+  const deleteProduct = useCallback(
+    (id: string) => {
+      const previousProducts =
+        productsRef.current;
 
-    (async () => {
-      try {
-        const supabase = createClient();
+      /*
+       * Optimistic delete.
+       */
 
-        await deleteProductRow(supabase, id);
+      setProducts((prev) =>
+        prev.filter(
+          (product) =>
+            product.id !== id
+        )
+      );
 
-        /*
-         * DELETE SUCCEEDED.
-         *
-         * Do not restore the product.
-         *
-         * The database is now the source of truth.
-         */
-        console.log(
-          `[catalog] Product ${id} deleted successfully`
-        );
-
-        /*
-         * Re-fetch products so UI exactly matches Supabase.
-         */
-        const rows = await fetchProducts(supabase);
-
-        setProducts(rows);
-        productsRef.current = rows;
-      } catch (err) {
-        console.error(
-          "[catalog] Failed to delete product from Supabase:",
-          err
-        );
-
-        /*
-         * DELETE FAILED.
-         *
-         * Restore previous list because the database
-         * still contains the product.
-         */
-        setProducts(previousProducts);
-      }
-    })();
-  }, []);
-
-  /*
-   * ADD UNIVERSE
-   */
-  const addUniverse = useCallback(
-    (universe: UniverseInfo) => {
-      const previousUniverses = universesRef.current;
-
-      setUniverses((prev) => [...prev, universe]);
+      /*
+       * Delete from Supabase.
+       */
 
       (async () => {
         try {
           const supabase = createClient();
 
-          const savedUniverse = await insertUniverse(
+          await deleteProductRow(
             supabase,
-            universe
-          );
-
-          setUniverses((prev) =>
-            prev.map((u) =>
-              u.id === universe.id
-                ? savedUniverse
-                : u
-            )
+            id
           );
         } catch (err) {
           console.error(
-            "[catalog] Failed to save universe to Supabase:",
+            "[catalog] Failed to delete product from Supabase. Rolling back:",
+            err
+          );
+
+          setProducts(previousProducts);
+        }
+      })();
+    },
+    []
+  );
+
+  /*
+   * ADD UNIVERSE
+   */
+
+  const addUniverse = useCallback(
+    (universe: UniverseInfo) => {
+      /*
+       * Optimistic update.
+       */
+
+      setUniverses((prev) => [
+        ...prev,
+        universe,
+      ]);
+
+      /*
+       * Save to Supabase.
+       */
+
+      (async () => {
+        try {
+          const supabase = createClient();
+
+          await insertUniverse(
+            supabase,
+            universe
+          );
+        } catch (err) {
+          console.error(
+            "[catalog] Failed to save universe to Supabase. Rolling back:",
+            err
+          );
+
+          setUniverses((prev) =>
+            prev.filter(
+              (u) => u.id !== universe.id
+            )
+          );
+        }
+      })();
+    },
+    []
+  );
+
+  /*
+   * REMOVE UNIVERSE
+   */
+
+  const removeUniverse = useCallback(
+    (id: string) => {
+      const previousUniverses =
+        universesRef.current;
+
+      /*
+       * Optimistic delete.
+       */
+
+      setUniverses((prev) =>
+        prev.filter(
+          (universe) =>
+            universe.id !== id
+        )
+      );
+
+      /*
+       * Delete from Supabase.
+       */
+
+      (async () => {
+        try {
+          const supabase = createClient();
+
+          await deleteUniverse(
+            supabase,
+            id
+          );
+        } catch (err) {
+          console.error(
+            "[catalog] Failed to delete universe from Supabase. Rolling back:",
             err
           );
 
@@ -389,123 +458,127 @@ export function CatalogProvider({
   );
 
   /*
-   * DELETE UNIVERSE
+   * ADD CATEGORY
    */
-  const removeUniverse = useCallback((id: string) => {
-    const previousUniverses = universesRef.current;
 
-    setUniverses((prev) =>
-      prev.filter((universe) => universe.id !== id)
-    );
+  const addCategory = useCallback(
+    (category: string) => {
+      const normalized =
+        category.trim();
 
-    (async () => {
-      try {
-        const supabase = createClient();
+      if (!normalized) return;
 
-        await deleteUniverse(supabase, id);
+      setCategories((prev) => {
+        /*
+         * Prevent duplicates.
+         */
 
-        const rows = await fetchUniverses(supabase);
+        if (
+          prev.some(
+            (c) =>
+              c.toLowerCase() ===
+              normalized.toLowerCase()
+          )
+        ) {
+          return prev;
+        }
 
-        setUniverses(rows);
-        universesRef.current = rows;
-      } catch (err) {
-        console.error(
-          "[catalog] Failed to delete universe from Supabase:",
-          err
+        const next = [
+          ...prev,
+          normalized,
+        ];
+
+        saveToStorage(
+          CATEGORIES_KEY,
+          next
         );
 
-        setUniverses(previousUniverses);
-      }
-    })();
-  }, []);
+        return next;
+      });
+    },
+    []
+  );
 
   /*
-   * ADD CATEGORY
-   *
-   * Categories remain localStorage-based in this phase.
+   * REMOVE CATEGORY
    */
-  const addCategory = useCallback((category: string) => {
-    setCategories((prev) => {
-      const next = [...prev, category];
 
-      saveToStorage(
-        CATEGORIES_KEY,
-        next
-      );
+  const removeCategory = useCallback(
+    (category: string) => {
+      setCategories((prev) => {
+        const next = prev.filter(
+          (c) => c !== category
+        );
 
-      return next;
-    });
-  }, []);
+        saveToStorage(
+          CATEGORIES_KEY,
+          next
+        );
 
-  /*
-   * DELETE CATEGORY
-   */
-  const removeCategory = useCallback((category: string) => {
-    setCategories((prev) => {
-      const next = prev.filter(
-        (c) => c !== category
-      );
-
-      saveToStorage(
-        CATEGORIES_KEY,
-        next
-      );
-
-      return next;
-    });
-  }, []);
+        return next;
+      });
+    },
+    []
+  );
 
   /*
    * IMPORT PRODUCTS
    */
+
   const importProducts = useCallback(
     (incoming: Product[]) => {
-      const previousProducts = productsRef.current;
+      const previousProducts =
+        productsRef.current;
+
+      /*
+       * Optimistically merge products.
+       */
 
       setProducts((prev) => {
         const byId = new Map(
-          prev.map((product) => [
-            product.id,
-            product,
+          prev.map((p) => [
+            p.id,
+            p,
           ])
         );
 
         for (const product of incoming) {
-          byId.set(product.id, {
-            ...byId.get(product.id),
-            ...product,
-          });
+          byId.set(
+            product.id,
+            {
+              ...byId.get(product.id),
+              ...product,
+            }
+          );
         }
 
-        return Array.from(byId.values());
+        return Array.from(
+          byId.values()
+        );
       });
+
+      /*
+       * Persist to Supabase.
+       */
 
       (async () => {
         try {
-          const supabase = createClient();
+          const supabase =
+            createClient();
 
           await upsertProducts(
             supabase,
             incoming
           );
-
-          /*
-           * Re-fetch after import so database remains
-           * the source of truth.
-           */
-          const rows = await fetchProducts(
-            supabase
-          );
-
-          setProducts(rows);
-          productsRef.current = rows;
         } catch (err) {
           console.error(
-            "[catalog] Failed to import products to Supabase:",
+            "[catalog] Failed to import products to Supabase. Rolling back:",
             err
           );
 
-          setProducts(previousProducts);
+          setProducts(
+            previousProducts
+          );
         }
       })();
     },
@@ -513,35 +586,66 @@ export function CatalogProvider({
   );
 
   /*
-   * RESET
+   * RESET TO SEED
    *
-   * This does NOT recreate seed data in Supabase.
-   * It simply reloads the current database contents.
+   * This function now means:
+   *
+   * - reset categories to local seed categories
+   * - re-fetch products from Supabase
+   * - re-fetch universes from Supabase
+   *
+   * It DOES NOT recreate deleted Supabase universes.
    */
+
   const resetToSeed = useCallback(() => {
     clearStorage(CATEGORIES_KEY);
 
-    setCategories(seedCategories);
+    setCategories(
+      seedCategories
+    );
 
     (async () => {
       try {
-        const supabase = createClient();
+        const supabase =
+          createClient();
 
-        const productRows =
-          await fetchProducts(supabase);
+        const rows =
+          await fetchProducts(
+            supabase
+          );
 
-        setProducts(productRows);
-        productsRef.current = productRows;
-
-        const universeRows =
-          await fetchUniverses(supabase);
-
-        setUniverses(universeRows);
-        universesRef.current = universeRows;
+        setProducts(rows);
       } catch (err) {
-        console.error(
-          "[catalog] Failed to reload catalog from Supabase:",
+        console.warn(
+          "[catalog] resetToSeed products fetch failed. Using seed products:",
           err
+        );
+
+        setProducts(
+          seedProducts
+        );
+      }
+    })();
+
+    (async () => {
+      try {
+        const supabase =
+          createClient();
+
+        const rows =
+          await fetchUniverses(
+            supabase
+          );
+
+        setUniverses(rows);
+      } catch (err) {
+        console.warn(
+          "[catalog] resetToSeed universes fetch failed. Using seed universes:",
+          err
+        );
+
+        setUniverses(
+          seedUniverses
         );
       }
     })();
@@ -550,127 +654,156 @@ export function CatalogProvider({
   /*
    * GET UNIVERSE
    */
+
   const getUniverse = useCallback(
     (id: string) =>
-      resolveUniverse(universes, id),
+      resolveUniverse(
+        universes,
+        id
+      ),
     [universes]
   );
 
   /*
    * GET PRODUCT BY SLUG
    */
-  const getProductBySlug = useCallback(
-    (slug: string) =>
-      products.find(
-        (product) => product.slug === slug
-      ),
-    [products]
-  );
+
+  const getProductBySlug =
+    useCallback(
+      (slug: string) =>
+        products.find(
+          (product) =>
+            product.slug === slug
+        ),
+      [products]
+    );
 
   /*
    * NEW ARRIVALS
    */
-  const getNewArrivals = useCallback(
-    (limit = 8) =>
-      [...products]
-        .sort(
-          (a, b) =>
-            +new Date(b.createdAt) -
-            +new Date(a.createdAt)
-        )
-        .slice(0, limit),
-    [products]
-  );
+
+  const getNewArrivals =
+    useCallback(
+      (limit = 8) =>
+        [...products]
+          .sort(
+            (a, b) =>
+              +new Date(
+                b.createdAt
+              ) -
+              +new Date(
+                a.createdAt
+              )
+          )
+          .slice(0, limit),
+      [products]
+    );
 
   /*
    * BEST SELLERS
    */
-  const getBestSellers = useCallback(
-    (limit = 8) =>
-      products
-        .filter((product) =>
-          product.tags.includes("bestseller")
-        )
-        .slice(0, limit),
-    [products]
-  );
+
+  const getBestSellers =
+    useCallback(
+      (limit = 8) =>
+        products
+          .filter((product) =>
+            product.tags.includes(
+              "bestseller"
+            )
+          )
+          .slice(0, limit),
+      [products]
+    );
 
   /*
    * FEATURED
    */
-  const getFeatured = useCallback(
-    (limit = 8) =>
-      [...products]
-        .sort(
-          (a, b) => b.rating - a.rating
-        )
-        .slice(0, limit),
-    [products]
-  );
+
+  const getFeatured =
+    useCallback(
+      (limit = 8) =>
+        [...products]
+          .sort(
+            (a, b) =>
+              b.rating - a.rating
+          )
+          .slice(0, limit),
+      [products]
+    );
 
   /*
    * CONTEXT VALUE
    */
-  const value = useMemo<CatalogContextValue>(
-    () => ({
-      products,
-      universes,
-      categories,
 
-      addProduct,
-      updateProduct,
-      deleteProduct,
+  const value =
+    useMemo<CatalogContextValue>(
+      () => ({
+        products,
+        universes,
+        categories,
 
-      addUniverse,
-      removeUniverse,
+        addProduct,
+        updateProduct,
+        deleteProduct,
 
-      addCategory,
-      removeCategory,
+        addUniverse,
+        removeUniverse,
 
-      importProducts,
-      resetToSeed,
+        addCategory,
+        removeCategory,
 
-      getUniverse,
-      getProductBySlug,
-      getNewArrivals,
-      getBestSellers,
-      getFeatured,
-    }),
-    [
-      products,
-      universes,
-      categories,
+        importProducts,
+        resetToSeed,
 
-      addProduct,
-      updateProduct,
-      deleteProduct,
+        getUniverse,
+        getProductBySlug,
 
-      addUniverse,
-      removeUniverse,
+        getNewArrivals,
+        getBestSellers,
+        getFeatured,
+      }),
+      [
+        products,
+        universes,
+        categories,
 
-      addCategory,
-      removeCategory,
+        addProduct,
+        updateProduct,
+        deleteProduct,
 
-      importProducts,
-      resetToSeed,
+        addUniverse,
+        removeUniverse,
 
-      getUniverse,
-      getProductBySlug,
-      getNewArrivals,
-      getBestSellers,
-      getFeatured,
-    ]
-  );
+        addCategory,
+        removeCategory,
+
+        importProducts,
+        resetToSeed,
+
+        getUniverse,
+        getProductBySlug,
+
+        getNewArrivals,
+        getBestSellers,
+        getFeatured,
+      ]
+    );
 
   return (
-    <CatalogContext.Provider value={value}>
+    <CatalogContext.Provider
+      value={value}
+    >
       {children}
     </CatalogContext.Provider>
   );
 }
 
 export function useCatalog() {
-  const ctx = useContext(CatalogContext);
+  const ctx =
+    useContext(
+      CatalogContext
+    );
 
   if (!ctx) {
     throw new Error(

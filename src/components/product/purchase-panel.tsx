@@ -250,7 +250,7 @@ export function PurchasePanel({ product }: { product: Product }) {
       <div className="flex flex-col gap-2.5 rounded-2xl border border-line bg-surface p-4 text-xs text-ink-dim">
         <div className="flex items-center gap-2.5">
           <Truck className="h-4 w-4 shrink-0 text-ink-faint" />
-          Free shipping on orders over $75 · delivered in 3–6 business days
+          Free shipping on orders over EGP 75 · delivered in 3–6 business days
         </div>
 
         <div className="flex items-center gap-2.5">

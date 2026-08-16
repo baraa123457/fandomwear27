@@ -939,7 +939,7 @@ export default function AdminProductsPage() {
 
                 <div className="grid grid-cols-2 gap-3.5">
                   <label>
-                    <span className="text-xs font-medium text-ink-dim">Price ($)</span>
+                    <span className="text-xs font-medium text-ink-dim">Price (EGP)</span>
                     <input
                       required
                       type="number"

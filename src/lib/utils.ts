@@ -5,10 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Egyptian Pound (EGP) is the project's single currency — every price
+// display in the app should go through this function rather than
+// formatting/prefixing a currency symbol locally. In the "en-US" locale
+// ICU has no distinct EGP symbol, so `style: "currency"` already renders
+// as "EGP 1,234.56" (code + thousands separators) out of the box.
 export function formatPrice(amount: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency: "EGP",
     minimumFractionDigits: 2,
   }).format(amount);
 }

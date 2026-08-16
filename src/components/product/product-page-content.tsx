@@ -103,7 +103,7 @@ export function ProductPageContent({
     offers: {
       "@type": "Offer",
       price: product.price.toFixed(2),
-      priceCurrency: "USD",
+      priceCurrency: "EGP",
       availability:
         product.stock > 0
           ? "https://schema.org/InStock"
@@ -231,8 +231,8 @@ export function ProductPageContent({
 
                 <AccordionContent>
                   Standard shipping takes 3–6 business days.
-                  Orders over $75 ship free; orders under $75
-                  have a flat $5.99 shipping fee. Express shipping
+                  Orders over EGP 75 ship free; orders under EGP 75
+                  have a flat EGP 5.99 shipping fee. Express shipping
                   (1–2 days) is available at checkout.
                 </AccordionContent>
               </AccordionItem>

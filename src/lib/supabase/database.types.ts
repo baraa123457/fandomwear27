@@ -421,7 +421,13 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      product_sales_counts: {
+        Row: {
+          product_id: string | null
+          total_sold: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       create_order: {

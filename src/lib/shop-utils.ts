@@ -47,7 +47,16 @@ export function derivePriceBounds(products: Product[]) {
   };
 }
 
-export function filterAndSortProducts(products: Product[], filters: ShopFilters): Product[] {
+export function filterAndSortProducts(
+  products: Product[],
+  filters: ShopFilters,
+  // Real units-sold-per-product (see CatalogContext.salesCounts /
+  // fetchProductSalesCounts), used by the "best" sort below. Optional so
+  // any other caller that doesn't have this data yet still works —
+  // "best" then simply falls back to catalog order for everything (no
+  // fabricated ranking, same as an all-zero sales map would produce).
+  salesCounts: Record<string, number> = {}
+): Product[] {
   let result = [...products];
 
   if (filters.universe) {
@@ -87,8 +96,12 @@ export function filterAndSortProducts(products: Product[], filters: ShopFilters)
       result.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
       break;
     case "best":
+      // Sort by real units sold (see catalog-context.tsx getBestSellers
+      // for the same source of truth), not the static `bestseller` tag —
+      // products with equal (including zero) sales keep their existing
+      // relative order.
       result.sort(
-        (a, b) => Number(b.tags.includes("bestseller")) - Number(a.tags.includes("bestseller"))
+        (a, b) => (salesCounts[b.id] ?? 0) - (salesCounts[a.id] ?? 0)
       );
       break;
     case "price-asc":

@@ -63,6 +63,32 @@ function productToRow(product: Product): ProductInsert {
 }
 
 /**
+ * Fetch real units-sold-per-product, from the `product_sales_counts` view
+ * (migration 20260816000015). The view already excludes cancelled orders
+ * and aggregates every order_items row server-side — this just reshapes
+ * it into a lookup map keyed by product id for getBestSellers().
+ *
+ * Products with zero sales simply don't appear as a key here; callers
+ * should treat a missing id as 0, not as "unknown".
+ */
+export async function fetchProductSalesCounts(
+  client: Client
+): Promise<Record<string, number>> {
+  const { data, error } = await client
+    .from("product_sales_counts")
+    .select("product_id, total_sold");
+
+  if (error) throw error;
+
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) {
+    if (!row.product_id) continue;
+    counts[row.product_id] = row.total_sold ?? 0;
+  }
+  return counts;
+}
+
+/**
  * Fetch only active products.
  * Archived products (is_active = false) are hidden from
  * the storefront and normal catalog views.

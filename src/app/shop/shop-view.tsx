@@ -62,7 +62,7 @@ function ShopPageInner() {
   const searchParams = useSearchParams();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   useBodyScrollLock(mobileFiltersOpen);
-  const { products, getUniverse } = useCatalog();
+  const { products, getUniverse, salesCounts } = useCatalog();
 
   const filters = useMemo(() => parseFilters(searchParams), [searchParams]);
 
@@ -79,7 +79,10 @@ function ShopPageInner() {
 
   const resetFilters = () => router.push("/shop", { scroll: false });
 
-  const filtered = useMemo(() => filterAndSortProducts(products, filters), [products, filters]);
+  const filtered = useMemo(
+    () => filterAndSortProducts(products, filters, salesCounts),
+    [products, filters, salesCounts]
+  );
   const { items, totalPages, page, totalItems } = paginate(filtered, filters.page);
 
   const activeUniverse = filters.universe ? getUniverse(filters.universe) : undefined;

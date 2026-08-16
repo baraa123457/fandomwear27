@@ -9,6 +9,7 @@ import { useToast } from "@/context/toast-context";
 import { formatPrice, cn } from "@/lib/utils";
 import { downloadCSV, ordersToCSV } from "@/lib/csv";
 import { createClient } from "@/lib/supabase/client";
+import { useCatalog } from "@/context/catalog-context";
 import {
   fetchAllOrdersAdmin,
   updateOrderStatusAdmin,
@@ -20,6 +21,7 @@ const statusOptions: AdminOrderStatus[] = ["processing", "shipped", "delivered",
 
 export default function AdminOrdersPage() {
   const { toast } = useToast();
+  const { refreshSalesCounts } = useCatalog();
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -50,6 +52,12 @@ export default function AdminOrdersPage() {
       const supabase = createClient();
       await updateOrderStatusAdmin(supabase, id, status);
       toast({ variant: "success", title: "Order updated", description: `${id} → ${status}` });
+      // Moving an order into/out of "cancelled" changes what counts as a
+      // sale (see product_sales_counts view) — refresh so Best Sellers
+      // reflects it immediately instead of only on next page load.
+      if (status === "cancelled" || previous === "cancelled") {
+        void refreshSalesCounts();
+      }
     } catch (err) {
       console.error("[admin] Failed to update order status:", err);
       if (previous) setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: previous } : o)));

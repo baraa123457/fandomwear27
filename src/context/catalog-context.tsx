@@ -25,6 +25,7 @@ import {
 
 import {
   fetchProducts,
+  fetchProductSalesCounts,
   insertProduct,
   updateProductRow,
   deleteProductRow,
@@ -90,6 +91,20 @@ interface CatalogContextValue {
   getNewArrivals: (limit?: number) => Product[];
   getBestSellers: (limit?: number) => Product[];
   getFeatured: (limit?: number) => Product[];
+
+  /**
+   * Real units-sold-per-product, keyed by product id (from the
+   * `product_sales_counts` view — see migration 20260816000015). A
+   * missing key means 0 sales, not "unknown". Exposed directly (not just
+   * via getBestSellers) so other sorts/UI that want real sales data —
+   * e.g. the shop page's "Best selling" sort — can use the same numbers
+   * instead of falling back to the static `bestseller` tag.
+   */
+  salesCounts: Record<string, number>;
+  /** Re-fetches salesCounts from Supabase. Call after an order is placed
+   *  or an order's status changes, so Best Sellers reflects it without
+   *  requiring a full page reload or any polling. */
+  refreshSalesCounts: () => Promise<void>;
 }
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -116,6 +131,12 @@ export function CatalogProvider({
 
   const [categories, setCategories] =
     useState<string[]>(seedCategories);
+
+  // Real units-sold-per-product (see fetchProductSalesCounts). Starts
+  // empty rather than seeded with fake numbers — until this loads,
+  // getBestSellers() correctly reports "no sales data yet" instead of
+  // fabricating a ranking.
+  const [salesCounts, setSalesCounts] = useState<Record<string, number>>({});
 
   /*
    * Keep refs synchronized with the latest state.
@@ -228,6 +249,31 @@ export function CatalogProvider({
       cancelled = true;
     };
   }, []);
+
+  /*
+   * Load real sales counts from Supabase (see migration
+   * 20260816000015_product_sales_counts.sql). A failure here shouldn't
+   * break the storefront — it just means Best Sellers temporarily shows
+   * no ranking (getBestSellers falls back sensibly, see below) rather
+   * than fabricated data.
+   */
+
+  const loadSalesCounts = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const counts = await fetchProductSalesCounts(supabase);
+      setSalesCounts(counts);
+    } catch (err) {
+      console.warn(
+        "[catalog] Failed to load product sales counts:",
+        err
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSalesCounts();
+  }, [loadSalesCounts]);
 
   /*
    * ADD PRODUCT
@@ -736,17 +782,33 @@ export function CatalogProvider({
    * BEST SELLERS
    */
 
+  /*
+   * BEST SELLERS
+   *
+   * Calculated from real sales (salesCounts, sourced from the
+   * product_sales_counts view — see fetchProductSalesCounts/migration
+   * 20260816000015), NOT from the static `bestseller` tag. That tag is
+   * still used elsewhere (product-card.tsx badge, shop-utils.ts "best"
+   * sort as a legacy fallback) but is no longer this function's source
+   * of truth.
+   *
+   * Only products with at least one real, non-cancelled sale are
+   * included — a product nobody has bought yet is never shown as a
+   * "Best Seller" just to pad the list out to `limit`. If nothing has
+   * sold yet, this returns an empty array (the homepage section simply
+   * renders fewer/zero cards, which is a sensible existing fallback —
+   * no fabricated ranking is introduced here to compensate).
+   */
   const getBestSellers =
     useCallback(
       (limit = 8) =>
         products
-          .filter((product) =>
-            product.tags.includes(
-              "bestseller"
-            )
+          .filter((product) => (salesCounts[product.id] ?? 0) > 0)
+          .sort(
+            (a, b) => (salesCounts[b.id] ?? 0) - (salesCounts[a.id] ?? 0)
           )
           .slice(0, limit),
-      [products]
+      [products, salesCounts]
     );
 
   /*
@@ -795,6 +857,9 @@ export function CatalogProvider({
         getNewArrivals,
         getBestSellers,
         getFeatured,
+
+        salesCounts,
+        refreshSalesCounts: loadSalesCounts,
       }),
       [
         products,
@@ -820,6 +885,9 @@ export function CatalogProvider({
         getNewArrivals,
         getBestSellers,
         getFeatured,
+
+        salesCounts,
+        loadSalesCounts,
       ]
     );
 

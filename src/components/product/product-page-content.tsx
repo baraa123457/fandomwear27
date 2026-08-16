@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Product } from "@/lib/types";
+import { Product } from "@/lib/types";
 import { useCatalog } from "@/context/catalog-context";
 import { Review, getReviewsForProduct } from "@/lib/data/reviews";
 import { createClient } from "@/lib/supabase/client";
@@ -26,52 +26,6 @@ import {
   AccordionContent,
 } from "@/components/ui/accordion";
 
-function getSafeUniverse(
-  getUniverse: (id: string) => ReturnType<
-    ReturnType<typeof useCatalog>["getUniverse"]
-  >,
-  universeId: string
-) {
-  try {
-    const result = getUniverse(universeId);
-
-    if (
-      result &&
-      typeof result === "object" &&
-      typeof result.label === "string"
-    ) {
-      return result;
-    }
-  } catch (error) {
-    console.warn(
-      "[product-page] Failed to resolve universe:",
-      universeId,
-      error
-    );
-  }
-
-  return {
-    id: universeId || "other",
-    label: universeId
-      ? universeId.charAt(0).toUpperCase() + universeId.slice(1)
-      : "Other",
-    tagline: "",
-    color: "#7C5CFF",
-    icon: "Sparkles",
-    productCount: 0,
-  };
-}
-
-/**
- * Shared product detail page.
- *
- * Supports both:
- * - Static products from the original catalog
- * - Products created through the admin panel and stored in Supabase
- *
- * The universe lookup is defensive so a missing universe
- * cannot crash the product page.
- */
 export function ProductPageContent({
   product,
 }: {
@@ -79,23 +33,29 @@ export function ProductPageContent({
 }) {
   const { getUniverse } = useCatalog();
 
-  const universe = getSafeUniverse(
-    getUniverse,
-    product.universe
-  );
+  /*
+   * Never assume the product's universe exists.
+   * getUniverse() already provides a safe fallback for unknown/deleted
+   * universes, which prevents client-side crashes.
+   */
+  const universe = getUniverse(product?.universe);
 
   const [reviews, setReviews] = useState<Review[]>(() =>
-    getReviewsForProduct(product.id, product.rating)
+    product
+      ? getReviewsForProduct(product.id, product.rating)
+      : []
   );
 
   useEffect(() => {
+    if (!product) return;
+
     let cancelled = false;
 
     setReviews(
       getReviewsForProduct(product.id, product.rating)
     );
 
-    async function loadReviews() {
+    (async () => {
       try {
         const supabase = createClient();
 
@@ -107,20 +67,32 @@ export function ProductPageContent({
         if (!cancelled && rows.length > 0) {
           setReviews(rows);
         }
-      } catch (error) {
+      } catch (err) {
         console.warn(
           "[reviews] Falling back to generated reviews — Supabase fetch failed:",
-          error
+          err
         );
       }
-    }
-
-    loadReviews();
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [product.id, product.rating]);
+  }, [product]);
+
+  if (!product) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col items-center justify-center px-5 py-16 text-center">
+        <h1 className="font-display text-xl font-bold text-ink">
+          Product not found
+        </h1>
+
+        <p className="mt-2 text-sm text-ink-dim">
+          This product could not be loaded.
+        </p>
+      </div>
+    );
+  }
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -137,15 +109,11 @@ export function ProductPageContent({
           ? "https://schema.org/InStock"
           : "https://schema.org/OutOfStock",
     },
-    ...(product.reviewCount > 0
-      ? {
-          aggregateRating: {
-            "@type": "AggregateRating",
-            ratingValue: product.rating.toFixed(1),
-            reviewCount: product.reviewCount,
-          },
-        }
-      : {}),
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: product.rating.toFixed(1),
+      reviewCount: product.reviewCount,
+    },
   };
 
   return (
@@ -230,9 +198,11 @@ export function ProductPageContent({
               <li>
                 · Original fan-inspired graphic, screen printed
               </li>
+
               <li>
                 · Oversized, boxy fit with a dropped shoulder
               </li>
+
               <li>
                 · Pre-shrunk fabric to hold its shape wash after wash
               </li>
@@ -242,9 +212,9 @@ export function ProductPageContent({
           <TabsContent value="material">
             <p className="max-w-2xl text-sm leading-relaxed text-ink-dim">
               Made from {product.material}. Machine wash cold,
-              inside out, with like colors. Tumble dry low or hang
-              dry to protect the print. Do not iron directly on the
-              graphic.
+              inside out, with like colors. Tumble dry low or
+              hang dry to protect the print. Do not iron directly
+              on the graphic.
             </p>
           </TabsContent>
 
@@ -260,10 +230,10 @@ export function ProductPageContent({
                 </AccordionTrigger>
 
                 <AccordionContent>
-                  Standard shipping takes 3–6 business days. Orders
-                  over $75 ship free; orders under $75 have a flat
-                  $5.99 shipping fee. Express shipping (1–2 days)
-                  is available at checkout.
+                  Standard shipping takes 3–6 business days.
+                  Orders over $75 ship free; orders under $75
+                  have a flat $5.99 shipping fee. Express shipping
+                  (1–2 days) is available at checkout.
                 </AccordionContent>
               </AccordionItem>
 
@@ -273,10 +243,10 @@ export function ProductPageContent({
                 </AccordionTrigger>
 
                 <AccordionContent>
-                  30 days from delivery to return unworn items with
-                  tags attached. Exchanges for a different size ship
-                  free — start a return from your account&apos;s
-                  Orders page.
+                  30 days from delivery to return unworn items
+                  with tags attached. Exchanges for a different
+                  size ship free — start a return from your
+                  account&apos;s Orders page.
                 </AccordionContent>
               </AccordionItem>
 
@@ -286,9 +256,9 @@ export function ProductPageContent({
                 </AccordionTrigger>
 
                 <AccordionContent>
-                  We ship to most countries. Customs fees and import
-                  duties, if any, are the responsibility of the
-                  recipient and are collected on delivery.
+                  We ship to most countries. Customs fees and
+                  import duties, if any, are the responsibility
+                  of the recipient and are collected on delivery.
                 </AccordionContent>
               </AccordionItem>
             </Accordion>

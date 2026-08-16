@@ -52,12 +52,16 @@ function productToRow(product: Product): ProductInsert {
   };
 }
 
-/** All products, in the same shape the old `products` array from
- * src/lib/data/products.ts had. */
+/**
+ * Fetch only active products.
+ * Archived products (is_active = false) are hidden from the storefront
+ * and normal catalog views.
+ */
 export async function fetchProducts(client: Client): Promise<Product[]> {
   const { data, error } = await client
     .from("products")
     .select("*")
+    .eq("is_active", true)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -81,12 +85,15 @@ export async function updateProductRow(
   patch: Partial<Product>
 ): Promise<Product> {
   const rowPatch: Database["public"]["Tables"]["products"]["Update"] = {};
+
   if (patch.slug !== undefined) rowPatch.slug = patch.slug;
   if (patch.name !== undefined) rowPatch.name = patch.name;
   if (patch.universe !== undefined) rowPatch.universe = patch.universe;
   if (patch.category !== undefined) rowPatch.category = patch.category;
   if (patch.price !== undefined) rowPatch.price = patch.price;
-  if (patch.compareAtPrice !== undefined) rowPatch.compare_at_price = patch.compareAtPrice ?? null;
+  if (patch.compareAtPrice !== undefined) {
+    rowPatch.compare_at_price = patch.compareAtPrice ?? null;
+  }
   if (patch.description !== undefined) rowPatch.description = patch.description;
   if (patch.material !== undefined) rowPatch.material = patch.material;
   if (patch.sizes !== undefined) rowPatch.sizes = patch.sizes;
@@ -109,13 +116,50 @@ export async function updateProductRow(
   return rowToProduct(data);
 }
 
+/**
+ * Permanently delete a product.
+ * This should only be used for products that are not referenced
+ * by existing order_items.
+ */
 export async function deleteProductRow(client: Client, id: string): Promise<void> {
-  const { error } = await client.from("products").delete().eq("id", id);
+  const { error } = await client
+    .from("products")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+/**
+ * Archive a product instead of permanently deleting it.
+ * This keeps existing orders and order_items intact.
+ */
+export async function archiveProductRow(client: Client, id: string): Promise<void> {
+  const { error } = await client
+    .from("products")
+    .update({ is_active: false })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+/**
+ * Restore an archived product.
+ */
+export async function restoreProductRow(client: Client, id: string): Promise<void> {
+  const { error } = await client
+    .from("products")
+    .update({ is_active: true })
+    .eq("id", id);
+
   if (error) throw error;
 }
 
 /** Insert-or-update by id, used by the admin CSV importer. */
-export async function upsertProducts(client: Client, products: Product[]): Promise<Product[]> {
+export async function upsertProducts(
+  client: Client,
+  products: Product[]
+): Promise<Product[]> {
   const { data, error } = await client
     .from("products")
     .upsert(products.map(productToRow), { onConflict: "id" })

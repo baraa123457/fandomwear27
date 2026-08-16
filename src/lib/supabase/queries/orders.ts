@@ -195,7 +195,7 @@ export async function createOrder(
     p_zip: input.zip,
     p_country: input.country,
     p_payment_method: input.paymentMethod,
-    p_coupon_code: input.couponCode ?? null,
+    p_coupon_code: input.couponCode ?? undefined,
   });
 
   if (error) {

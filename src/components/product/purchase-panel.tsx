@@ -11,25 +11,17 @@ import { SizeGuideDialog } from "@/components/product/size-guide-dialog";
 import { formatPrice, cn } from "@/lib/utils";
 
 export function PurchasePanel({ product }: { product: Product }) {
-  /*
-   * Products coming from Supabase may have empty sizes/colors.
-   * Always normalize them before using array indexes.
-   */
-  const colors = Array.isArray(product.colors) ? product.colors : [];
-  const sizes = Array.isArray(product.sizes) ? product.sizes : [];
+  const colors = product.colors ?? [];
+  const sizes = product.sizes ?? [];
 
-  const defaultSize =
-    sizes.length > 0
-      ? sizes[Math.floor(sizes.length / 2)]
-      : undefined;
+  const [size, setSize] = useState<Size>(
+    sizes[Math.floor(sizes.length / 2)] ?? "M"
+  );
 
-  const defaultColor =
-    colors.length > 0
-      ? colors[0]?.name
-      : "";
+  const [color, setColor] = useState(
+    colors[0]?.name ?? "Black"
+  );
 
-  const [size, setSize] = useState<Size | undefined>(defaultSize);
-  const [color, setColor] = useState<string>(defaultColor);
   const [qty, setQty] = useState(1);
 
   const { addItem, open } = useCart();
@@ -38,29 +30,11 @@ export function PurchasePanel({ product }: { product: Product }) {
 
   const isWishlisted = has(product.id);
 
-  const lowStock =
-    product.stock > 0 && product.stock <= 15;
-
-  const outOfStock = product.stock <= 0;
-
-  const canAddToCart =
-    !outOfStock &&
-    !!size &&
-    !!color &&
-    sizes.length > 0 &&
-    colors.length > 0;
+  const lowStock = product.stock > 0 && product.stock <= 15;
+  const outOfStock = product.stock === 0;
 
   const handleAdd = () => {
-    if (!canAddToCart || !size || !color) {
-      toast({
-        variant: "error",
-        title: "Please select your options",
-        description:
-          "Please select a color and size before adding this product to your cart.",
-      });
-
-      return;
-    }
+    if (outOfStock) return;
 
     addItem(
       {
@@ -99,14 +73,11 @@ export function PurchasePanel({ product }: { product: Product }) {
           </span>
         )}
 
-        {product.compareAtPrice && (
+        {product.compareAtPrice && product.compareAtPrice > product.price && (
           <span className="rounded-full bg-accent-red/15 px-2.5 py-1 text-[11px] font-bold text-accent-red">
             SAVE{" "}
             {Math.round(
-              (1 -
-                product.price /
-                  product.compareAtPrice) *
-                100
+              (1 - product.price / product.compareAtPrice) * 100
             )}
             %
           </span>
@@ -121,9 +92,9 @@ export function PurchasePanel({ product }: { product: Product }) {
       {/* Color */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-ink-dim">
-          Color{" "}
+          Color —{" "}
           <span className="font-normal normal-case text-ink-faint">
-            {color || "Select a color"}
+            {color}
           </span>
         </p>
 
@@ -142,15 +113,13 @@ export function PurchasePanel({ product }: { product: Product }) {
                     ? "border-accent-cyan"
                     : "border-line"
                 )}
-                style={{
-                  backgroundColor: c.hex,
-                }}
+                style={{ backgroundColor: c.hex }}
               />
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-xs text-ink-faint">
-            No colors available for this product.
+          <p className="mt-2 text-sm text-ink-faint">
+            Default color
           </p>
         )}
       </div>
@@ -184,21 +153,19 @@ export function PurchasePanel({ product }: { product: Product }) {
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-xs text-ink-faint">
-            No sizes available for this product.
+          <p className="mt-2 text-sm text-ink-faint">
+            Standard size
           </p>
         )}
       </div>
 
-      {/* Quantity + add to cart */}
+      {/* Quantity + Add to cart */}
       <div className="flex items-center gap-3">
         <div className="flex h-13 items-center gap-1 rounded-full border border-line px-1">
           <button
             type="button"
             aria-label="Decrease quantity"
-            onClick={() =>
-              setQty((q) => Math.max(1, q - 1))
-            }
+            onClick={() => setQty((q) => Math.max(1, q - 1))}
             className="flex h-11 w-11 items-center justify-center text-ink-dim hover:text-ink"
           >
             <Minus className="h-4 w-4" />
@@ -212,12 +179,7 @@ export function PurchasePanel({ product }: { product: Product }) {
             type="button"
             aria-label="Increase quantity"
             onClick={() =>
-              setQty((q) =>
-                Math.min(
-                  Math.max(1, product.stock),
-                  q + 1
-                )
-              )
+              setQty((q) => Math.min(product.stock, q + 1))
             }
             className="flex h-11 w-11 items-center justify-center text-ink-dim hover:text-ink"
           >
@@ -227,16 +189,12 @@ export function PurchasePanel({ product }: { product: Product }) {
 
         <Button
           onClick={handleAdd}
-          disabled={!canAddToCart}
+          disabled={outOfStock}
           size="lg"
           variant="accent"
           className="flex-1"
         >
-          {outOfStock
-            ? "Out of stock"
-            : !size || !color
-              ? "Select options"
-              : "Add to cart"}
+          {outOfStock ? "Out of stock" : "Add to cart"}
         </Button>
 
         <Button
@@ -288,12 +246,11 @@ export function PurchasePanel({ product }: { product: Product }) {
         )}
       </p>
 
-      {/* Shipping / returns */}
+      {/* Shipping / Returns */}
       <div className="flex flex-col gap-2.5 rounded-2xl border border-line bg-surface p-4 text-xs text-ink-dim">
         <div className="flex items-center gap-2.5">
           <Truck className="h-4 w-4 shrink-0 text-ink-faint" />
-          Free shipping on orders over $75 · delivered in
-          3–6 business days
+          Free shipping on orders over $75 · delivered in 3–6 business days
         </div>
 
         <div className="flex items-center gap-2.5">

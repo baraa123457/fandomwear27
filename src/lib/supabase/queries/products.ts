@@ -14,7 +14,10 @@ function rowToProduct(row: ProductRow): Product {
     universe: row.universe,
     category: row.category,
     price: Number(row.price),
-    compareAtPrice: row.compare_at_price !== null ? Number(row.compare_at_price) : undefined,
+    compareAtPrice:
+      row.compare_at_price !== null
+        ? Number(row.compare_at_price)
+        : undefined,
     description: row.description,
     material: row.material,
     sizes: row.sizes as Product["sizes"],
@@ -34,6 +37,7 @@ function productToRow(product: Product): ProductInsert {
     id: product.id,
     slug: product.slug,
     name: product.name,
+    is_active: true,
     universe: product.universe,
     category: product.category,
     price: product.price,
@@ -68,7 +72,10 @@ export async function fetchProducts(client: Client): Promise<Product[]> {
   return (data ?? []).map(rowToProduct);
 }
 
-export async function insertProduct(client: Client, product: Product): Promise<Product> {
+export async function insertProduct(
+  client: Client,
+  product: Product
+): Promise<Product> {
   const { data, error } = await client
     .from("products")
     .insert(productToRow(product))
@@ -91,9 +98,11 @@ export async function updateProductRow(
   if (patch.universe !== undefined) rowPatch.universe = patch.universe;
   if (patch.category !== undefined) rowPatch.category = patch.category;
   if (patch.price !== undefined) rowPatch.price = patch.price;
+
   if (patch.compareAtPrice !== undefined) {
     rowPatch.compare_at_price = patch.compareAtPrice ?? null;
   }
+
   if (patch.description !== undefined) rowPatch.description = patch.description;
   if (patch.material !== undefined) rowPatch.material = patch.material;
   if (patch.sizes !== undefined) rowPatch.sizes = patch.sizes;
@@ -121,7 +130,10 @@ export async function updateProductRow(
  * This should only be used for products that are not referenced
  * by existing order_items.
  */
-export async function deleteProductRow(client: Client, id: string): Promise<void> {
+export async function deleteProductRow(
+  client: Client,
+  id: string
+): Promise<void> {
   const { error } = await client
     .from("products")
     .delete()
@@ -134,7 +146,10 @@ export async function deleteProductRow(client: Client, id: string): Promise<void
  * Archive a product instead of permanently deleting it.
  * This keeps existing orders and order_items intact.
  */
-export async function archiveProductRow(client: Client, id: string): Promise<void> {
+export async function archiveProductRow(
+  client: Client,
+  id: string
+): Promise<void> {
   const { error } = await client
     .from("products")
     .update({ is_active: false })
@@ -146,7 +161,10 @@ export async function archiveProductRow(client: Client, id: string): Promise<voi
 /**
  * Restore an archived product.
  */
-export async function restoreProductRow(client: Client, id: string): Promise<void> {
+export async function restoreProductRow(
+  client: Client,
+  id: string
+): Promise<void> {
   const { error } = await client
     .from("products")
     .update({ is_active: true })

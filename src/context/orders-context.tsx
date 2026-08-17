@@ -69,7 +69,7 @@ const OrdersContext = createContext<OrdersContextValue | null>(null);
  */
 export function OrdersProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const { refreshSalesCounts } = useCatalog();
+  const { refreshSalesCounts, refreshProducts } = useCatalog();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const userRef = useRef(user);
@@ -157,14 +157,16 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
     });
 
     // The order is now committed server-side (order_items were written by
-    // create_order()), so Best Sellers' underlying sales data has already
-    // changed — refresh it now instead of waiting for a future page load.
-    // Best-effort: a failure here shouldn't surface as a failed checkout,
-    // since the order itself already succeeded.
+    // create_order(), which also atomically decremented product stock —
+    // see migration 20260816000016), so both sales data and inventory
+    // have already changed — refresh them now instead of waiting for a
+    // future page load. Best-effort: a failure here shouldn't surface as
+    // a failed checkout, since the order itself already succeeded.
     void refreshSalesCounts();
+    void refreshProducts();
 
     return order;
-  }, [refreshSalesCounts]);
+  }, [refreshSalesCounts, refreshProducts]);
 
   return (
     <OrdersContext.Provider value={{ orders, isLoading, placeOrder }}>{children}</OrdersContext.Provider>

@@ -21,7 +21,7 @@ const statusOptions: AdminOrderStatus[] = ["processing", "shipped", "delivered",
 
 export default function AdminOrdersPage() {
   const { toast } = useToast();
-  const { refreshSalesCounts } = useCatalog();
+  const { refreshSalesCounts, refreshProducts } = useCatalog();
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -53,10 +53,13 @@ export default function AdminOrdersPage() {
       await updateOrderStatusAdmin(supabase, id, status);
       toast({ variant: "success", title: "Order updated", description: `${id} → ${status}` });
       // Moving an order into/out of "cancelled" changes what counts as a
-      // sale (see product_sales_counts view) — refresh so Best Sellers
-      // reflects it immediately instead of only on next page load.
+      // sale (see product_sales_counts view) AND restores/re-deducts
+      // product stock (see the order_status_stock_sync trigger, migration
+      // 20260816000016) — refresh both so Best Sellers and stock numbers
+      // reflect it immediately instead of only on next page load.
       if (status === "cancelled" || previous === "cancelled") {
         void refreshSalesCounts();
+        void refreshProducts();
       }
     } catch (err) {
       console.error("[admin] Failed to update order status:", err);

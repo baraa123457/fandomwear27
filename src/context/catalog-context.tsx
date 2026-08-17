@@ -105,6 +105,14 @@ interface CatalogContextValue {
    *  or an order's status changes, so Best Sellers reflects it without
    *  requiring a full page reload or any polling. */
   refreshSalesCounts: () => Promise<void>;
+
+  /**
+   * Re-fetches products (including `stock`) from Supabase. Call after an
+   * order is placed or cancelled/reinstated, so every stock display
+   * (product cards, product page, admin) reflects the real database
+   * value instead of the number that was current when the page loaded.
+   */
+  refreshProducts: () => Promise<void>;
 }
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -180,6 +188,20 @@ export function CatalogProvider({
    *
    * This prevents deleted database products from coming back.
    */
+
+  const loadProducts = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const rows = await fetchProducts(supabase);
+      setProducts(rows);
+    } catch (err) {
+      console.warn(
+        "[catalog] Supabase products fetch failed. Using seed products as fallback:",
+        err
+      );
+      setProducts(seedProducts);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -860,6 +882,7 @@ export function CatalogProvider({
 
         salesCounts,
         refreshSalesCounts: loadSalesCounts,
+        refreshProducts: loadProducts,
       }),
       [
         products,
@@ -888,6 +911,7 @@ export function CatalogProvider({
 
         salesCounts,
         loadSalesCounts,
+        loadProducts,
       ]
     );
 

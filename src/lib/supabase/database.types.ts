@@ -157,6 +157,7 @@ export type Database = {
           shipping_address: Json | null
           shipping_cost: number
           status: Database["public"]["Enums"]["admin_order_status"]
+          stock_restored: boolean
           subtotal: number
           tax: number
           total: number
@@ -176,6 +177,7 @@ export type Database = {
           shipping_address?: Json | null
           shipping_cost?: number
           status?: Database["public"]["Enums"]["admin_order_status"]
+          stock_restored?: boolean
           subtotal?: number
           tax?: number
           total: number
@@ -195,6 +197,7 @@ export type Database = {
           shipping_address?: Json | null
           shipping_cost?: number
           status?: Database["public"]["Enums"]["admin_order_status"]
+          stock_restored?: boolean
           subtotal?: number
           tax?: number
           total?: number
@@ -456,6 +459,7 @@ export type Database = {
           shipping_address: Json | null
           shipping_cost: number
           status: Database["public"]["Enums"]["admin_order_status"]
+          stock_restored: boolean
           subtotal: number
           tax: number
           total: number

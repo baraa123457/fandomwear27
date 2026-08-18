@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Unbounded, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { CatalogProvider } from "@/context/catalog-context";
+import { HomepageSettingsProvider } from "@/context/homepage-settings-context";
 import { CartProvider } from "@/context/cart-context";
 import { WishlistProvider } from "@/context/wishlist-context";
 import { RecentlyViewedProvider } from "@/context/recently-viewed-context";
@@ -82,6 +83,7 @@ export default function RootLayout({
         <ThemeProvider>
           <ToastProvider>
             <CatalogProvider>
+            <HomepageSettingsProvider>
             <AuthProvider>
               <AdminAuthProvider>
                 <WishlistProvider>
@@ -104,6 +106,7 @@ export default function RootLayout({
                 </WishlistProvider>
               </AdminAuthProvider>
             </AuthProvider>
+            </HomepageSettingsProvider>
             </CatalogProvider>
           </ToastProvider>
         </ThemeProvider>

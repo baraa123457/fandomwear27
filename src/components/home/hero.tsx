@@ -1,16 +1,48 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import Link from "next/link";
 import { motion, useScroll, useTransform, useReducedMotion } from "framer-motion";
 import { ArrowRight, Compass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TeeArt } from "@/components/shared/tee-art";
 import { useCatalog } from "@/context/catalog-context";
+import { useHomepageSettings } from "@/context/homepage-settings-context";
+import type { Product } from "@/lib/types";
 
 export function Hero() {
   const { products, getUniverse } = useCatalog();
-  const heroTees = [products[13], products[20], products[6]].filter(Boolean); // anime, gaming, dc
+  const { heroProductIds } = useHomepageSettings();
+
+  // Resolve the admin's 3 picks, in order (hero_product_1/2/3), from the
+  // real catalog — NOT from Best Sellers and NOT from fixed array
+  // indexes. A slot falls back to the next catalog product not already
+  // used elsewhere in the Hero whenever it's unpicked or its product no
+  // longer exists (e.g. deleted), so the homepage never crashes and
+  // never shows the same product twice.
+  const heroTees = useMemo(() => {
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const used = new Set<string>();
+    const fallbackPool = [...products];
+
+    const nextFallback = (): Product | undefined => {
+      while (fallbackPool.length > 0) {
+        const candidate = fallbackPool.shift()!;
+        if (!used.has(candidate.id)) return candidate;
+      }
+      return undefined;
+    };
+
+    return heroProductIds
+      .map((id) => {
+        const picked = id ? byId.get(id) : undefined;
+        const resolved = picked ?? nextFallback();
+        if (resolved) used.add(resolved.id);
+        return resolved;
+      })
+      .filter((p): p is Product => Boolean(p));
+  }, [products, heroProductIds]);
+
   const sectionRef = useRef<HTMLElement>(null);
   const prefersReducedMotion = useReducedMotion();
   const { scrollYProgress } = useScroll({

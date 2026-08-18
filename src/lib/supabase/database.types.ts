@@ -86,6 +86,52 @@ export type Database = {
         }
         Relationships: []
       }
+      homepage_settings: {
+        Row: {
+          hero_product_1: string | null
+          hero_product_2: string | null
+          hero_product_3: string | null
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          hero_product_1?: string | null
+          hero_product_2?: string | null
+          hero_product_3?: string | null
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          hero_product_1?: string | null
+          hero_product_2?: string | null
+          hero_product_3?: string | null
+          id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homepage_settings_hero_product_1_fkey"
+            columns: ["hero_product_1"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homepage_settings_hero_product_2_fkey"
+            columns: ["hero_product_2"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homepage_settings_hero_product_3_fkey"
+            columns: ["hero_product_3"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           art_icon: string

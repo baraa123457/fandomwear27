@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { DollarSign, ShoppingCart, Users, TrendingUp } from "lucide-react";
 import { StatCard } from "@/components/admin/stat-card";
+import { HeroProductsSection } from "@/components/admin/hero-products-section";
 import { getAnalytics } from "@/lib/data/admin";
 import { useCatalog } from "@/context/catalog-context";
 import { formatPrice } from "@/lib/utils";
@@ -94,6 +95,8 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </div>
+
+      <HeroProductsSection />
     </div>
   );
 }

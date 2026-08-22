@@ -7,6 +7,12 @@ import { Reveal } from "@/components/shared/reveal";
 export function FeaturedProducts() {
   const { getFeatured } = useCatalog();
   const items = getFeatured(8);
+
+  // Featured is manual curation (admin Products page) — if nothing has
+  // been marked featured yet, there's nothing honest to show here, so the
+  // section simply doesn't render rather than showing an empty grid.
+  if (items.length === 0) return null;
+
   return (
     <section className="border-b border-line bg-void py-20 sm:py-28">
       <Reveal className="mx-auto max-w-7xl px-5 sm:px-8">

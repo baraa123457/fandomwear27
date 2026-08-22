@@ -3,13 +3,14 @@
 import { Suspense, useCallback, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { SlidersHorizontal, Search, X } from "lucide-react";
+import { SlidersHorizontal, Search, X, Sparkles, FilterX } from "lucide-react";
 import { FilterPanel } from "@/components/shop/filter-panel";
 import { ProductCard } from "@/components/shared/product-card";
 import { Pagination } from "@/components/shared/pagination";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { Dropdown } from "@/components/shared/dropdown";
 import { Button } from "@/components/ui/button";
+import { RecentlyViewed } from "@/components/product/recently-viewed";
 import {
   ShopFilters,
   SortKey,
@@ -57,6 +58,20 @@ function serializeFilters(filters: ShopFilters): string {
   return params.toString();
 }
 
+function ShopSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex flex-col gap-3">
+          <div className="aspect-square w-full rounded-2xl bg-surface animate-pulse border border-line/60" />
+          <div className="h-4 w-3/4 rounded-md bg-surface animate-pulse" />
+          <div className="h-3 w-1/2 rounded-md bg-surface animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ShopPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -69,7 +84,6 @@ function ShopPageInner() {
   const updateFilters = useCallback(
     (patch: Partial<ShopFilters>) => {
       const next: ShopFilters = { ...filters, ...patch };
-      // Any filter change (other than page itself) resets pagination.
       if (!("page" in patch)) next.page = 1;
       const qs = serializeFilters(next);
       router.push(qs ? `/shop?${qs}` : "/shop", { scroll: false });
@@ -143,14 +157,19 @@ function ShopPageInner() {
         </aside>
 
         <div>
-          {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-line py-24 text-center">
-              <p className="font-display text-lg font-bold text-ink">No designs match yet</p>
-              <p className="mt-1.5 max-w-xs text-sm text-ink-faint">
-                Try widening your filters or searching a different universe.
+          {products.length === 0 ? (
+            <ShopSkeleton />
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-surface/30 px-6 py-24 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface border border-line text-ink-faint shadow-lg">
+                <FilterX className="h-8 w-8" />
+              </div>
+              <h3 className="mt-5 font-display text-xl font-bold text-ink">No matching designs found</h3>
+              <p className="mt-2 max-w-sm text-sm text-ink-dim leading-relaxed">
+                We couldn&apos;t find any products matching your current filters. Try removing some filters or searching for another keyword.
               </p>
-              <Button onClick={resetFilters} variant="outline" size="sm" className="mt-5">
-                Clear filters
+              <Button onClick={resetFilters} variant="accent" size="sm" className="mt-6 gap-2">
+                <Sparkles className="h-4 w-4" /> Reset all filters
               </Button>
             </div>
           ) : (
@@ -166,6 +185,11 @@ function ShopPageInner() {
             </>
           )}
         </div>
+      </div>
+
+      {/* Recently Viewed section */}
+      <div className="mt-16 border-t border-line pt-12">
+        <RecentlyViewed />
       </div>
 
       {/* Mobile filter drawer */}
@@ -211,7 +235,7 @@ function ShopPageInner() {
 
 export default function ShopPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<ShopSkeleton />}>
       <ShopPageInner />
     </Suspense>
   );

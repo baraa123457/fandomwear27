@@ -3,6 +3,7 @@ import { Unbounded, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { CatalogProvider } from "@/context/catalog-context";
 import { HomepageSettingsProvider } from "@/context/homepage-settings-context";
+import { StoreSettingsProvider } from "@/context/store-settings-context";
 import { CartProvider } from "@/context/cart-context";
 import { WishlistProvider } from "@/context/wishlist-context";
 import { RecentlyViewedProvider } from "@/context/recently-viewed-context";
@@ -15,6 +16,8 @@ import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { CartDrawer } from "@/components/shared/cart-drawer";
 import { Preloader } from "@/components/shared/preloader";
+import { BackToTop } from "@/components/shared/back-to-top";
+
 
 const unbounded = Unbounded({
   subsets: ["latin"],
@@ -82,6 +85,7 @@ export default function RootLayout({
         <Preloader />
         <ThemeProvider>
           <ToastProvider>
+            <StoreSettingsProvider>
             <CatalogProvider>
             <HomepageSettingsProvider>
             <AuthProvider>
@@ -100,7 +104,9 @@ export default function RootLayout({
                         <main id="main-content">{children}</main>
                         <Footer />
                         <CartDrawer />
+                        <BackToTop />
                       </CartProvider>
+
                     </OrdersProvider>
                   </RecentlyViewedProvider>
                 </WishlistProvider>
@@ -108,6 +114,7 @@ export default function RootLayout({
             </AuthProvider>
             </HomepageSettingsProvider>
             </CatalogProvider>
+            </StoreSettingsProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>

@@ -43,4 +43,24 @@ export interface Product {
    *  required. */
   video?: string | null;
   createdAt: string;
+  /** Last-modified timestamp (DB-managed via a trigger). Optional because
+   *  the seed fallback array predates this field. */
+  updatedAt?: string;
+  /** Active = shown on the storefront. Draft/Archived = admin-only.
+   *  Undefined (only possible on the seed fallback array) is treated as
+   *  "active" everywhere it's read. */
+  status?: "active" | "draft" | "archived";
+  /** Optional admin-facing stock-keeping unit, distinct from `id`. */
+  sku?: string;
+  /** Per-product low-stock threshold. Undefined falls back to the
+   *  dashboard-wide default (see lib/admin/dashboard-metrics.ts). */
+  lowStockThreshold?: number;
+  /** Manually curated by the admin — powers the homepage Featured
+   *  Products section. Undefined is treated as false. */
+  featured?: boolean;
+  seoTitle?: string;
+  seoDescription?: string;
+  /** Cost of goods sold (COGS) / cost price per unit in EGP */
+  costPrice?: number;
 }
+

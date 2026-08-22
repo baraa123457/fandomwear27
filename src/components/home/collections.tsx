@@ -31,9 +31,10 @@ export function Collections() {
               Pick your universe
             </p>
             <h2 className="mt-3 text-balance font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
-              Seven worlds. One drop.
+              {universes.length} {universes.length === 1 ? "world" : "worlds"}. One drop.
             </h2>
           </div>
+
           <Link
             href="/shop"
             className="hidden shrink-0 items-center gap-1.5 text-sm font-medium text-ink-dim transition-colors hover:text-ink sm:flex"

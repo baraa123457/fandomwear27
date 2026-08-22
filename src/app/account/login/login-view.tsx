@@ -7,6 +7,7 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/context/toast-context";
 import { Button } from "@/components/ui/button";
 import { AuthShell, AuthField } from "@/components/account/auth-shell";
+import { SocialAuthButtons } from "@/components/account/social-auth-buttons";
 
 export default function LoginPage() {
   const { signIn } = useAuth();
@@ -44,36 +45,40 @@ export default function LoginPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <AuthField
-          label="Email"
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@email.com"
-        />
-        <div>
+      <div className="flex flex-col gap-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <AuthField
-            label="Password"
-            type="password"
+            label="Email"
+            type="email"
             required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@email.com"
           />
-          <Link
-            href="/account/forgot-password"
-            className="mt-1.5 inline-block text-xs text-ink-faint hover:text-ink"
-          >
-            Forgot password?
-          </Link>
-        </div>
-        {error && <p className="text-xs text-accent-red">{error}</p>}
-        <Button type="submit" size="lg" variant="accent" className="mt-2 w-full" disabled={submitting}>
-          {submitting ? "Signing in…" : "Sign in"}
-        </Button>
-      </form>
+          <div>
+            <AuthField
+              label="Password"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+            <Link
+              href="/account/forgot-password"
+              className="mt-1.5 inline-block text-xs text-ink-faint hover:text-ink"
+            >
+              Forgot password?
+            </Link>
+          </div>
+          {error && <p className="text-xs text-accent-red">{error}</p>}
+          <Button type="submit" size="lg" variant="accent" className="mt-2 w-full" disabled={submitting}>
+            {submitting ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+
+        <SocialAuthButtons action="Sign in" />
+      </div>
     </AuthShell>
   );
 }

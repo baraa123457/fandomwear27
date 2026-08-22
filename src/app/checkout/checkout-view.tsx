@@ -121,12 +121,12 @@ export default function CheckoutPage() {
 
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return;
-    const ok = await applyCoupon(couponInput);
+    const { ok, message } = await applyCoupon(couponInput);
     if (ok) {
       toast({ variant: "success", title: "Coupon applied", description: couponInput.toUpperCase() });
       setCouponInput("");
     } else {
-      toast({ variant: "error", title: "Invalid or expired code", description: couponInput.toUpperCase() });
+      toast({ variant: "error", title: message, description: couponInput.toUpperCase() });
     }
   };
 

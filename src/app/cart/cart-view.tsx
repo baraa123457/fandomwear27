@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Minus, Plus, ShoppingBag, Tag, X, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+
 import { useCart } from "@/context/cart-context";
 import { useCatalog } from "@/context/catalog-context";
 import { TeeArt } from "@/components/shared/tee-art";
@@ -10,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/context/toast-context";
+
+import { ProductCard } from "@/components/shared/product-card";
 
 const FREE_SHIPPING_THRESHOLD = 75;
 
@@ -27,33 +30,65 @@ export default function CartPage() {
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
   const { toast } = useToast();
-  const { getUniverse } = useCatalog();
+  const { getUniverse, products } = useCatalog();
+
+  const trendingSuggestions = useMemo(() => {
+    return products.slice(0, 4);
+  }, [products]);
 
   const remaining = Math.max(FREE_SHIPPING_THRESHOLD - subtotal, 0);
 
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return;
-    const ok = await applyCoupon(couponInput);
+    const { ok, message } = await applyCoupon(couponInput);
     if (ok) {
       toast({ variant: "success", title: "Coupon applied", description: couponInput.toUpperCase() });
       setCouponInput("");
     } else {
-      toast({ variant: "error", title: "Invalid or expired code", description: couponInput.toUpperCase() });
+      toast({ variant: "error", title: message, description: couponInput.toUpperCase() });
     }
   };
 
   if (lines.length === 0) {
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-5 text-center">
-        <ShoppingBag className="h-10 w-10 text-ink-faint" />
-        <h1 className="mt-4 font-display text-xl font-bold text-ink">Your cart is empty</h1>
-        <p className="mt-1.5 text-sm text-ink-dim">Find something you love and it&apos;ll show up here.</p>
-        <Button asChild variant="accent" size="md" className="mt-6">
-          <Link href="/shop">Browse the shop</Link>
-        </Button>
+      <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8">
+        <div className="mx-auto flex max-w-md flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-surface/30 px-6 py-20 text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent-cyan/10 text-accent-cyan shadow-xl">
+            <ShoppingBag className="h-10 w-10 animate-bounce" />
+          </div>
+          <h1 className="mt-6 font-display text-2xl font-bold text-ink">Your cart is empty</h1>
+          <p className="mt-2 text-sm text-ink-dim leading-relaxed">
+            Looks like you haven&apos;t added any designs to your bag yet. Explore our latest oversized drops!
+          </p>
+          <Button asChild variant="accent" size="lg" className="mt-7">
+            <Link href="/shop">Start Shopping</Link>
+          </Button>
+        </div>
+
+        {/* You Might Like Suggestions */}
+        {trendingSuggestions.length > 0 && (
+          <div className="mt-20 border-t border-line pt-12">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-mono text-xs uppercase tracking-widest text-accent-cyan">Curated for you</p>
+                <h2 className="mt-1 font-display text-2xl font-bold text-ink">You might like these</h2>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/shop">View all designs</Link>
+              </Button>
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-4">
+              {trendingSuggestions.map((p) => (
+                <ProductCard key={p.id} product={p} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
+
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">

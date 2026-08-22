@@ -10,6 +10,10 @@ const styles: Record<string, string> = {
   out: "bg-accent-red/15 text-accent-red",
   active: "bg-emerald-500/15 text-emerald-400",
   inactive: "bg-surface-2 text-ink-faint",
+  draft: "bg-amber-500/15 text-amber-400",
+  archived: "bg-surface-2 text-ink-faint",
+  expired: "bg-accent-red/15 text-accent-red",
+  exhausted: "bg-amber-500/15 text-amber-400",
 };
 
 export function StatusBadge({ status }: { status: string }) {

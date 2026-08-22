@@ -216,7 +216,10 @@ export function rowsToProducts(rows: string[][], fallback: Product): CSVImportRe
     // already has, since importProducts merges onto the current record
     // and this object simply won't include an `image`/`images`/`video`
     // key to overwrite it with.
-    const { image: _templateImage, images: _templateImages, video: _templateVideo, ...templateRest } = fallback;
+    const templateRest = { ...fallback };
+    delete templateRest.image;
+    delete templateRest.images;
+    delete templateRest.video;
 
     products.push({
       ...templateRest,

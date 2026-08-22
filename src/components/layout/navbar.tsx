@@ -19,7 +19,9 @@ const navLinks = [
   { label: "Shop", href: "/shop" },
   { label: "New Arrivals", href: "/shop?sort=new" },
   { label: "Best Sellers", href: "/shop?sort=best" },
+  { label: "About Us", href: "/about" },
 ];
+
 
 export function Navbar() {
   const pathname = usePathname();

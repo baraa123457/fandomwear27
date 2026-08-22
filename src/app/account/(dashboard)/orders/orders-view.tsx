@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Package } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, Package, Star } from "lucide-react";
 import { useOrders, OrderStatus } from "@/context/orders-context";
 import { useCatalog } from "@/context/catalog-context";
-import { TeeArt } from "@/components/shared/tee-art";
+import { ProductVisual } from "@/components/shared/product-visual";
+import { Button } from "@/components/ui/button";
+import { WriteReviewDialog } from "@/components/product/write-review-dialog";
 import { formatPrice, cn } from "@/lib/utils";
 
 const statusStyles: Record<OrderStatus, string> = {
@@ -14,10 +17,30 @@ const statusStyles: Record<OrderStatus, string> = {
   cancelled: "bg-accent-red/15 text-accent-red",
 };
 
+interface ReviewTarget {
+  id: string;
+  name: string;
+  size?: string;
+  author?: string;
+}
+
 export default function OrdersPage() {
   const { orders } = useOrders();
-  const { getUniverse } = useCatalog();
+  const { products, getUniverse, refreshProducts } = useCatalog();
   const [expanded, setExpanded] = useState<string | null>(orders[0]?.id ?? null);
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+
+  const handleOpenReview = (line: { productId: string; name: string; size?: string }, customerName: string) => {
+    setReviewTarget({
+      id: line.productId,
+      name: line.name,
+      size: line.size,
+      author: customerName,
+    });
+    setReviewOpen(true);
+  };
+
 
   return (
     <div>
@@ -35,6 +58,8 @@ export default function OrdersPage() {
         <div className="mt-6 flex flex-col gap-4">
           {orders.map((order) => {
             const isOpen = expanded === order.id;
+            const isDelivered = order.status === "delivered";
+
             return (
               <div key={order.id} className="rounded-2xl border border-line bg-surface">
                 <button
@@ -74,28 +99,57 @@ export default function OrdersPage() {
                   <div className="border-t border-line p-5">
                     <ul className="flex flex-col gap-4">
                       {order.items.map((line) => {
-                        const universe = getUniverse(line.universe)!;
+                        const universe = getUniverse(line.universe);
+                        const matchedProduct = products.find((p) => p.id === line.productId);
+                        const productImage = matchedProduct?.images?.[0] ?? matchedProduct?.image;
+
                         return (
-                          <li key={`${line.productId}-${line.size}`} className="flex gap-3">
-                            <TeeArt
-                              color={universe.color}
-                              icon={line.artIcon}
-                              label={line.name}
-                              className="h-16 w-13 shrink-0"
-                            />
-                            <div className="flex-1 text-sm">
-                              <p className="font-medium text-ink">{line.name}</p>
-                              <p className="text-xs text-ink-faint">
-                                {line.size} · {line.color} · Qty {line.quantity}
-                              </p>
+                          <li
+                            key={`${line.productId}-${line.size}`}
+                            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-line/50 pb-4 last:border-0 last:pb-0"
+                          >
+                            <div className="flex items-center gap-3">
+                              <ProductVisual
+                                image={productImage}
+                                color={universe.color}
+                                icon={line.artIcon}
+                                label={line.name}
+                                className="h-16 w-16 shrink-0 rounded-xl"
+                              />
+                              <div className="text-sm">
+                                <Link
+                                  href={`/product/${line.slug}`}
+                                  className="font-medium text-ink hover:text-accent-cyan transition-colors"
+                                >
+                                  {line.name}
+                                </Link>
+                                <p className="text-xs text-ink-faint">
+                                  {line.size} · {line.color} · Qty {line.quantity}
+                                </p>
+                              </div>
                             </div>
-                            <span className="font-mono text-sm text-ink">
-                              {formatPrice(line.price * line.quantity)}
-                            </span>
+
+                            <div className="flex items-center justify-between sm:justify-end gap-4">
+                              <span className="font-mono text-sm text-ink">
+                                {formatPrice(line.price * line.quantity)}
+                              </span>
+                              {isDelivered && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenReview(line, order.shippingAddress.fullName || order.email)}
+                                  className="gap-1.5 text-xs hover:border-accent-cyan hover:text-accent-cyan"
+                                >
+                                  <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                                  Write a Review
+                                </Button>
+                              )}
+                            </div>
                           </li>
                         );
                       })}
                     </ul>
+
                     <div className="mt-4 border-t border-line pt-4 text-xs text-ink-faint">
                       Shipping to {order.shippingAddress.fullName}, {order.shippingAddress.line1},{" "}
                       {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.zip}
@@ -128,6 +182,18 @@ export default function OrdersPage() {
             );
           })}
         </div>
+      )}
+
+      {reviewTarget && (
+        <WriteReviewDialog
+          open={reviewOpen}
+          onOpenChange={setReviewOpen}
+          product={reviewTarget}
+          defaultAuthor={reviewTarget.author}
+          onReviewSubmitted={() => {
+            void refreshProducts();
+          }}
+        />
       )}
     </div>
   );

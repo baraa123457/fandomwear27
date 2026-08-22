@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Feather, Recycle, Ruler, Sparkles } from "lucide-react";
+import { ArrowRight, Feather, Recycle, Ruler, Sparkles, ShieldCheck, HeartHandshake } from "lucide-react";
 import { resolveIcon } from "@/lib/icon-map";
 import { useCatalog } from "@/context/catalog-context";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
@@ -10,46 +10,57 @@ import { Reveal } from "@/components/shared/reveal";
 import { Button } from "@/components/ui/button";
 import { fadeInUp, staggerContainer, revealOnScroll } from "@/lib/motion";
 
-const stats = [
-  { value: "40+", label: "original designs" },
-  { value: "6", label: "fandom universes" },
-  { value: "260gsm", label: "heavyweight cotton" },
-  { value: "100%", label: "original artwork" },
-];
-
 const values = [
   {
     icon: Sparkles,
-    title: "Original artwork, always",
-    body: "Every graphic is designed in-house, inspired by the worlds we grew up loving — never a straight lift, never a bootleg print.",
+    title: "100% Original Artwork",
+    body: "Every graphic is designed in-house, inspired by the worlds and characters we grew up loving — never a straight lift, never a generic bootleg print.",
   },
   {
     icon: Ruler,
-    title: "Built for the oversized fit",
-    body: "Boxy shoulders, dropped hems, heavyweight cotton. Cut specifically for the oversized silhouette, not resized from a regular tee.",
+    title: "Tailored Oversized Streetwear Fit",
+    body: "Boxy shoulders, dropped hems, and structured drape. Cut specifically for a modern oversized streetwear silhouette, not merely upsized from a standard tee.",
   },
   {
     icon: Recycle,
-    title: "Made to last, not to trash",
-    body: "Small-batch drops over mass overstock. Fewer, better tees that hold their shape and color wash after wash.",
+    title: "Heavyweight 260GSM Cotton",
+    body: "Made with premium heavyweight combed cotton that holds its density, comfort, and shape after dozens of washes.",
   },
   {
     icon: Feather,
-    title: "Comfort you can feel",
-    body: "Garment-washed and pre-shrunk, so what you order is what still fits a year from now.",
+    title: "Pre-Shrunk & Garment-Washed",
+    body: "Garment-washed and pre-shrunk so what you order is exactly what fits and stays comfortable year after year.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "High-Density Screen Printing",
+    body: "Printed with durable, fade-resistant inks designed to withstand wash cycles without cracking or peeling.",
+  },
+  {
+    icon: HeartHandshake,
+    title: "Customer Satisfaction First",
+    body: "Fast reliable delivery across Egypt, hassle-free returns, and dedicated customer support whenever you need help.",
   },
 ];
 
 export default function AboutView() {
-  const { universes } = useCatalog();
+  const { universes, products } = useCatalog();
+
+  const stats = [
+    { value: `${products.length}${products.length >= 10 ? "+" : ""}`, label: "Original Designs" },
+    { value: String(universes.length), label: "Fandom Universes" },
+    { value: "260 GSM", label: "Heavyweight Cotton" },
+    { value: "100%", label: "Original Artwork" },
+  ];
+
   return (
     <div>
       <div className="mx-auto max-w-7xl px-5 pt-8 sm:px-8">
-        <Breadcrumbs items={[{ label: "About FandomWear" }]} />
+        <Breadcrumbs items={[{ label: "About Us" }]} />
       </div>
 
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-line py-16 sm:py-24">
+      <section id="story" className="relative overflow-hidden border-b border-line py-16 sm:py-24">
         <div
           className="pointer-events-none absolute inset-0 opacity-60"
           style={{ background: "radial-gradient(circle at 20% 20%, #7c5cff22, transparent 55%)" }}
@@ -62,24 +73,32 @@ export default function AboutView() {
           animate="show"
           className="relative mx-auto max-w-3xl px-5 sm:px-8"
         >
-          <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent-cyan">Our story</p>
-          <h1 className="mt-4 text-balance font-display text-4xl font-bold tracking-tight text-ink sm:text-5xl">
-            Wear your favorite universes, not a knockoff of them.
+          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-medium text-ink-dim">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent-cyan animate-glow-pulse" />
+            Our Story & Craftsmanship
+          </span>
+
+          <h1 className="mt-6 text-balance font-display text-4xl font-extrabold tracking-tight text-ink sm:text-5xl lg:text-6xl">
+            Wear your favorite universes as{" "}
+            <span className="bg-gradient-to-r from-accent-purple via-accent-purple to-accent-cyan bg-clip-text text-transparent">
+              premium streetwear.
+            </span>
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-ink-dim">
-            FandomWear started with a simple frustration: fandom merch was either mass-produced,
-            thin, and generic — or beautifully made but too on-the-nose to wear outside a
-            convention. We build oversized tees that put the artwork first and the fit second to
-            none, so you can wear the worlds you love as actual streetwear.
+
+          <p className="mt-6 max-w-2xl text-base leading-relaxed text-ink-dim sm:text-lg">
+            FandomWear was created with a clear vision: fandom apparel should never feel cheap, generic, or poorly fitting.
+            We blend deep love for iconic anime, gaming, and cinematic universes with premium streetwear design — giving you
+            heavyweight cotton, bespoke oversized cuts, and original in-house artwork you can wear anywhere with pride.
           </p>
+
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button asChild size="lg">
+            <Button asChild size="lg" variant="accent">
               <Link href="/shop">
-                Shop the collection <ArrowRight className="h-4 w-4" />
+                Explore The Collection <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link href="/help/contact">Get in touch</Link>
+              <Link href="/help/contact">Contact Us</Link>
             </Button>
           </div>
         </motion.div>
@@ -102,17 +121,23 @@ export default function AboutView() {
       </Reveal>
 
       {/* Values */}
-      <section className="border-b border-line py-20 sm:py-28">
+      <section id="values" className="border-b border-line py-20 sm:py-28">
         <div className="mx-auto max-w-7xl px-5 sm:px-8">
           <Reveal>
-            <h2 className="max-w-lg text-balance font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
-              What we actually care about
+            <p className="font-mono text-xs uppercase tracking-widest text-accent-purple">
+              Quality & Commitment
+            </p>
+            <h2 className="mt-3 max-w-lg text-balance font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
+              Crafted with intention, built to last.
             </h2>
+            <p className="mt-3 max-w-xl text-sm text-ink-dim">
+              Every detail — from the weight of the cotton to the precision of the print — is engineered for comfort and longevity.
+            </p>
           </Reveal>
           <motion.div
             variants={staggerContainer}
             {...revealOnScroll}
-            className="mt-10 grid gap-6 sm:grid-cols-2"
+            className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
           >
             {values.map(({ icon: Icon, title, body }) => (
               <motion.div
@@ -120,8 +145,8 @@ export default function AboutView() {
                 variants={fadeInUp}
                 className="rounded-2xl border border-line bg-surface p-6 transition-colors hover:border-ink-faint"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-purple/15 text-accent-purple">
-                  <Icon className="h-4.5 w-4.5" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-purple/15 text-accent-purple">
+                  <Icon className="h-5 w-5" />
                 </div>
                 <h3 className="mt-4 text-base font-semibold text-ink">{title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-ink-dim">{body}</p>
@@ -135,11 +160,14 @@ export default function AboutView() {
       <section className="border-b border-line bg-surface/40 py-20 sm:py-28">
         <div className="mx-auto max-w-7xl px-5 sm:px-8">
           <Reveal>
-            <h2 className="max-w-lg text-balance font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
-              The universes we design for
+            <p className="font-mono text-xs uppercase tracking-widest text-accent-cyan">
+              Explore By Universe
+            </p>
+            <h2 className="mt-3 max-w-lg text-balance font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
+              The worlds we design for
             </h2>
             <p className="mt-3 max-w-md text-sm text-ink-dim">
-              And we&apos;re always adding more — tell us what you want to see next.
+              From anime legends to gaming icons, find the world that speaks to you.
             </p>
           </Reveal>
           <motion.div
@@ -153,15 +181,15 @@ export default function AboutView() {
                 <motion.div key={u.id} variants={fadeInUp}>
                   <Link
                     href={`/shop?universe=${u.id}`}
-                    className="group flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface p-5 text-center transition-colors hover:border-ink-faint"
+                    className="group flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface p-5 text-center transition-all hover:border-ink-faint hover:-translate-y-1"
                   >
                     <div
-                      className="flex h-11 w-11 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-110"
-                      style={{ backgroundColor: `${u.color}22`, color: u.color }}
+                      className="flex h-12 w-12 items-center justify-center rounded-2xl transition-transform duration-300 group-hover:scale-110"
+                      style={{ backgroundColor: `${u.color}20`, color: u.color }}
                     >
-                      <Icon className="h-5 w-5" />
+                      <Icon className="h-6 w-6" />
                     </div>
-                    <p className="text-sm font-medium text-ink">{u.label}</p>
+                    <p className="text-sm font-semibold text-ink">{u.label}</p>
                   </Link>
                 </motion.div>
               );
@@ -174,17 +202,23 @@ export default function AboutView() {
       <Reveal className="py-20 sm:py-28">
         <div className="mx-auto flex max-w-3xl flex-col items-center px-5 text-center sm:px-8">
           <h2 className="text-balance font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
-            Ready to find your fit?
+            Find your next favorite fit.
           </h2>
           <p className="mt-3 max-w-md text-sm text-ink-dim">
-            Browse the full collection, or reach out if you&apos;ve got a universe you want us to
-            design for next.
+            Explore our curated oversized drops, or drop us a line if you have a universe you would like to see next.
           </p>
-          <Button asChild size="lg" className="mt-7">
-            <Link href="/shop">
-              Shop FandomWear <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+            <Button asChild size="lg" variant="accent">
+              <Link href="/shop">
+                Shop Collection <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link href="/help/contact">
+                Contact Support
+              </Link>
+            </Button>
+          </div>
         </div>
       </Reveal>
     </div>

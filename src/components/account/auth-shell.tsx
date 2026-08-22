@@ -12,18 +12,22 @@ export function AuthShell({
   footer: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto flex min-h-[75vh] max-w-md flex-col justify-center px-5 py-16">
-      <Link href="/" className="mx-auto font-display text-lg font-extrabold tracking-tight text-ink">
-        FANDOM<span className="text-accent-purple">WEAR</span>
-      </Link>
-      <div className="mt-8 rounded-2xl border border-line bg-surface p-8">
-        <h1 className="font-display text-2xl font-bold text-ink">{title}</h1>
-        <p className="mt-1.5 text-sm text-ink-faint">{subtitle}</p>
-        <div className="mt-6">{children}</div>
+    <div className="relative min-h-[75vh] w-full overflow-hidden flex flex-col justify-center px-5 py-16">
+      <div className="pointer-events-none absolute inset-0 grid-veil opacity-50" aria-hidden />
+      <div className="relative mx-auto w-full max-w-md">
+        <Link href="/" className="mx-auto block text-center font-display text-lg font-extrabold tracking-tight text-ink">
+          FANDOM<span className="text-accent-purple">WEAR</span>
+        </Link>
+        <div className="mt-8 rounded-2xl border border-line bg-surface p-8 shadow-2xl backdrop-blur-sm">
+          <h1 className="font-display text-2xl font-bold text-ink">{title}</h1>
+          <p className="mt-1.5 text-sm text-ink-faint">{subtitle}</p>
+          <div className="mt-6">{children}</div>
+        </div>
+        <p className="mt-6 text-center text-sm text-ink-faint">{footer}</p>
       </div>
-      <p className="mt-6 text-center text-sm text-ink-faint">{footer}</p>
     </div>
   );
+
 }
 
 export function AuthField({

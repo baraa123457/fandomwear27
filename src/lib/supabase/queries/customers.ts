@@ -38,3 +38,20 @@ export async function fetchAdminCustomers(client: Client): Promise<AdminCustomer
   if (error) throw error;
   return (data ?? []).map(rowToCustomer);
 }
+
+/** A single customer, for the admin customer-details page. Looked up by email
+ *  (the table's real natural key — `customers.id` happens to be the id of
+ *  whichever order created the row, not a stable customer identifier). */
+export async function fetchAdminCustomerByEmail(
+  client: Client,
+  email: string
+): Promise<AdminCustomer | null> {
+  const { data, error } = await client
+    .from("customers")
+    .select("*")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? rowToCustomer(data) : null;
+}

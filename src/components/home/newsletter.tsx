@@ -1,72 +1,70 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { motion } from "framer-motion";
-import { ArrowRight, Check } from "lucide-react";
+import { Send, CheckCircle2, Sparkles, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fadeInUp, revealOnScroll } from "@/lib/motion";
+import { Reveal } from "@/components/shared/reveal";
+import { useToast } from "@/context/toast-context";
 
 export function Newsletter() {
   const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [subscribed, setSubscribed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubscribe = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email) return;
-    setSubmitted(true);
+    if (!email || !email.includes("@")) return;
+
+    setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    setLoading(false);
+    setSubscribed(true);
+    toast({
+      variant: "success",
+      title: "You're on the list! 🎉",
+      description: "You'll be the first to know when new limited drops arrive.",
+    });
   };
 
   return (
-    <section className="relative overflow-hidden border-b border-line bg-surface py-20">
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(circle at 15% 50%, color-mix(in oklab, var(--color-accent-purple) 20%, transparent), transparent 55%), radial-gradient(circle at 85% 50%, color-mix(in oklab, var(--color-accent-cyan) 16%, transparent), transparent 55%)",
-        }}
-        aria-hidden
-      />
-      <motion.div
-        variants={fadeInUp}
-        {...revealOnScroll}
-        className="relative mx-auto flex max-w-3xl flex-col items-center px-5 text-center sm:px-8"
-      >
-        <h2 className="text-balance font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
-          Get first access to every drop.
+    <section className="border-t border-line bg-surface/30 py-20 sm:py-28">
+      <Reveal className="mx-auto max-w-4xl px-5 text-center sm:px-8">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-purple/15 text-accent-purple shadow-xl">
+          <Mail className="h-7 w-7" />
+        </div>
+
+        <span className="mt-6 inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-4 py-1 text-xs font-semibold text-accent-purple">
+          <Sparkles className="h-3.5 w-3.5" /> VIP Drops & Early Access
+        </span>
+
+        <h2 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-5xl">
+          Be First to Know About New Drops
         </h2>
-        <p className="mt-3 max-w-md text-sm text-ink-dim">
-          New universes, restocks, and 10% off your first order — straight to your inbox, no spam.
+        <p className="mt-3 max-w-xl mx-auto text-sm text-ink-dim sm:text-base leading-relaxed">
+          Join our community of over 5,000+ anime, gaming, and streetwear enthusiasts. Get secret discounts, drop alerts, and exclusive restock notifications.
         </p>
 
-        {submitted ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-8 flex items-center gap-2 rounded-full border border-accent-cyan/40 bg-accent-cyan/10 px-5 py-3 text-sm font-medium text-accent-cyan"
-          >
-            <Check className="h-4 w-4" /> You&apos;re on the list — check your inbox.
-          </motion.div>
+        {subscribed ? (
+          <div className="mt-8 flex items-center justify-center gap-2 text-sm font-semibold text-emerald-400">
+            <CheckCircle2 className="h-5 w-5" /> You&apos;re subscribed! Keep an eye on your inbox for our next drop.
+          </div>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-8 flex w-full max-w-md gap-2">
-            <label htmlFor="newsletter-email" className="sr-only">
-              Email address
-            </label>
+          <form onSubmit={handleSubscribe} className="mt-8 mx-auto flex max-w-md flex-col gap-3 sm:flex-row">
             <input
-              id="newsletter-email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@email.com"
-              className="h-12 flex-1 rounded-full border border-line bg-void px-5 text-sm text-ink placeholder:text-ink-faint focus:border-accent-cyan focus:outline-none"
+              placeholder="Enter your email address..."
+              className="h-12 flex-1 rounded-xl border border-line bg-void px-4 text-sm text-ink placeholder:text-ink-faint focus:border-accent-purple focus:outline-none"
             />
-            <Button type="submit" size="md" variant="accent" className="shrink-0">
-              Subscribe <ArrowRight className="h-4 w-4" />
+            <Button type="submit" size="lg" variant="accent" disabled={loading} className="gap-2 shrink-0">
+              <Send className="h-4 w-4" /> {loading ? "Joining..." : "Subscribe"}
             </Button>
           </form>
         )}
-      </motion.div>
+      </Reveal>
     </section>
   );
 }

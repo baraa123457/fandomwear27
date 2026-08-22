@@ -1,19 +1,39 @@
 "use client";
 
-import { useMemo, useRef, useState, useEffect, FormEvent, ChangeEvent } from "react";
-import { Download, Film, Pencil, Plus, RotateCcw, Save, Search, Trash2, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, FormEvent, ChangeEvent } from "react";
+import {
+  Copy,
+  Download,
+  Film,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Save,
+  Search,
+  SlidersHorizontal,
+  Star,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { Product, Size, UniverseInfo } from "@/lib/types";
 import { useCatalog } from "@/context/catalog-context";
 import { Dialog, DialogTrigger, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/admin/status-badge";
 import { ManageOptionsList } from "@/components/admin/manage-options-list";
 import { ProductVisual } from "@/components/shared/product-visual";
 import { Dropdown } from "@/components/shared/dropdown";
+import { Skeleton } from "@/components/shared/skeletons";
 import { useToast } from "@/context/toast-context";
 import { formatPrice, cn, getErrorMessage } from "@/lib/utils";
 import { downloadCSV, parseCSV, productsToCSV, rowsToProducts } from "@/lib/csv";
 import { createClient } from "@/lib/supabase/client";
+import {
+  fetchAllProductsAdmin,
+  insertProduct,
+  countProductOrderItems,
+  upsertProducts,
+} from "@/lib/supabase/queries/products";
 import {
   uploadProductImage,
   uploadProductVideo,
@@ -22,9 +42,6 @@ import {
 
 const FALLBACK_PALETTE = ["#7C5CFF", "#22D3EE", "#FF3B4E", "#22C55E", "#F59E0B", "#EC4899", "#38BDF8", "#A855F7"];
 
-// Common clothing colors offered as one-click shortcuts in the "Product
-// colors" section below. Purely a convenience — the admin can still add
-// any custom color via the native color picker (see handleAddCustomColor).
 const PREDEFINED_COLORS: Product["colors"] = [
   { name: "Black", hex: "#000000" },
   { name: "White", hex: "#FFFFFF" },
@@ -41,11 +58,10 @@ const PREDEFINED_COLORS: Product["colors"] = [
   { name: "Navy", hex: "#1E3A8A" },
 ];
 
+const ALL_TAGS: Product["tags"] = ["new", "bestseller", "sale", "limited"];
+
 const HEX_COLOR_PATTERN = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
 
-// Expands shorthand (#abc) to full 6-digit form and uppercases for
-// consistent storage/dedupe — matches the format already used throughout
-// the seed data and storefront (e.g. "#7C5CFF").
 function normalizeHex(hex: string): string {
   const trimmed = hex.trim();
   if (trimmed.length === 4) {
@@ -69,9 +85,9 @@ function slugify(label: string) {
     .replace(/(^-|-$)/g, "");
 }
 
-function uniqueSlug(name: string, existing: Product[]): string {
+function uniqueSlug(name: string, existing: Product[], excludeId?: string): string {
   const root = slugify(name) || `product-${Date.now()}`;
-  const taken = new Set(existing.map((p) => p.slug));
+  const taken = new Set(existing.filter((p) => p.id !== excludeId).map((p) => p.slug));
   if (!taken.has(root)) return root;
   let n = 2;
   while (taken.has(`${root}-${n}`)) n++;
@@ -79,15 +95,10 @@ function uniqueSlug(name: string, existing: Product[]): string {
 }
 
 const ALL_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
+const ALL_STATUSES: NonNullable<Product["status"]>[] = ["active", "draft", "archived"];
 
 const IMAGE_SLOT_LABELS = ["Image 1 — Main/front", "Image 2", "Image 3"] as const;
 
-// Each image slot is either empty, holding whatever the product already
-// had saved in Storage ("existing"), or holding a newly-picked file that
-// hasn't been uploaded yet ("new" — previewed locally via an object URL,
-// uploaded only on submit). This is what lets replace/remove correctly
-// leave the old Storage object alone until the database write actually
-// succeeds (see handleSubmit).
 type MediaSlot =
   | { kind: "empty" }
   | { kind: "existing"; url: string }
@@ -95,28 +106,54 @@ type MediaSlot =
 
 type ImageSlots = [MediaSlot, MediaSlot, MediaSlot];
 
-type Draft = Pick<Product, "name" | "category" | "universe" | "price" | "stock" | "artIcon" | "sizes" | "colors"> & {
+interface Draft {
+  name: string;
+  description: string;
+  material: string;
+  price: number;
+  compareAtPrice: string; // "" = none
+  sku: string;
+  stock: number;
+  lowStockThreshold: number;
+  category: string;
+  universe: string;
+  tags: Product["tags"];
+  sizes: Size[];
+  colors: Product["colors"];
   images: ImageSlots;
   video: MediaSlot;
-};
+  featured: boolean;
+  status: NonNullable<Product["status"]>;
+  slug: string;
+  seoTitle: string;
+  seoDescription: string;
+  costPrice: string;
+}
 
-// `universe` is intentionally left blank here — there's no universe that's
-// safe to hard-code (Supabase is the source of truth and its universe list
-// can change at any time). openNew() fills in a real default from the
-// currently-loaded universeOptions before opening the dialog; if none are
-// loaded, it shows an error instead of opening with a blank/fake universe.
 const emptyDraft: Draft = {
   name: "",
+  description: "",
+  material: "",
   category: "Oversized Tee",
   universe: "",
   price: 34.99,
+  compareAtPrice: "",
+  costPrice: "",
+  sku: "",
   stock: 50,
-  artIcon: "Gamepad2",
+  lowStockThreshold: 10,
+  tags: [],
   images: [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }],
   video: { kind: "empty" },
   sizes: [...ALL_SIZES],
   colors: [],
+  featured: false,
+  status: "active",
+  slug: "",
+  seoTitle: "",
+  seoDescription: "",
 };
+
 
 function slotPreviewSrc(slot: MediaSlot): string | undefined {
   if (slot.kind === "existing") return slot.url;
@@ -124,34 +161,92 @@ function slotPreviewSrc(slot: MediaSlot): string | undefined {
   return undefined;
 }
 
-const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB — client-side cap before upload
-const MAX_VIDEO_BYTES = 20 * 1024 * 1024; // 20MB — matches the Storage bucket's file_size_limit
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
 
+const DEFAULT_ART_ICON = "Shirt";
+
+type DeleteTarget = { product: Product; orderCount: number | null };
+
+const inputClass =
+  "mt-1.5 h-11 w-full rounded-xl border border-line bg-void px-4 text-sm text-ink focus:border-accent-cyan focus:outline-none";
+
+function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3.5 border-t border-line pt-5 first:border-0 first:pt-0">
+      <h3 className="text-[11px] font-bold uppercase tracking-widest text-ink-faint">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[11px] font-medium text-ink-faint">{label}</span>
+      {children}
+    </div>
+  );
+}
 
 export default function AdminProductsPage() {
   const { toast } = useToast();
   const {
-    products: list,
     universes: universeOptions,
     categories: categoryOptions,
-    addProduct,
-    updateProduct,
-    deleteProduct,
+    addProduct: catalogAddProduct,
+    updateProduct: catalogUpdateProduct,
+    deleteProduct: catalogDeleteProduct,
     addUniverse,
     removeUniverse,
     addCategory,
     removeCategory,
-    importProducts,
     resetToSeed,
     getUniverse,
+    refreshProducts: refreshStorefrontProducts,
   } = useCatalog();
+
+  // Admin-only, all-statuses product list — deliberately independent of
+  // useCatalog()'s `products`, which is the storefront's active-only list.
+  // A draft/archived product must be manageable here without ever leaking
+  // into the customer-facing catalog.
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadStatus, setLoadStatus] = useState<"loading" | "error" | "ready">("loading");
+
+  const loadAdminProducts = useCallback(async () => {
+    setLoadStatus("loading");
+    try {
+      const supabase = createClient();
+      const rows = await fetchAllProductsAdmin(supabase);
+      setProducts(rows);
+      setLoadStatus("ready");
+    } catch (err) {
+      console.error("[admin products] Failed to load products:", getErrorMessage(err), err);
+      setLoadStatus("error");
+      toast({ variant: "error", title: "Failed to load products" });
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    loadAdminProducts();
+  }, [loadAdminProducts]);
+
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [universeFilter, setUniverseFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
+  const [priceMin, setPriceMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [optionsDialogOpen, setOptionsDialogOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [slugTouched, setSlugTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [customColorHex, setCustomColorHex] = useState("#7C5CFF");
   const imageInputRefs = [
@@ -171,14 +266,7 @@ export default function AdminProductsPage() {
       return;
     }
     const color = FALLBACK_PALETTE[universeOptions.length % FALLBACK_PALETTE.length];
-    const newUniverse: UniverseInfo = {
-      id,
-      label: trimmed,
-      tagline: "",
-      color,
-      icon: "Sparkles",
-      productCount: 0,
-    };
+    const newUniverse: UniverseInfo = { id, label: trimmed, tagline: "", color, icon: "Sparkles", productCount: 0 };
     addUniverse(newUniverse);
     toast({ variant: "success", title: "Universe added", description: trimmed });
   };
@@ -191,6 +279,7 @@ export default function AdminProductsPage() {
     removeUniverse(id);
     const next = universeOptions.filter((u) => u.id !== id);
     if (draft.universe === id) setDraft((d) => ({ ...d, universe: next[0].id }));
+    if (universeFilter === id) setUniverseFilter("all");
   };
 
   const addCategoryOption = (label: string) => {
@@ -212,54 +301,105 @@ export default function AdminProductsPage() {
     removeCategory(label);
     const next = categoryOptions.filter((c) => c !== label);
     if (draft.category === label) setDraft((d) => ({ ...d, category: next[0] }));
+    if (categoryFilter === label) setCategoryFilter("all");
   };
 
   const resolveUniverseColor = (id: string) => getUniverse(id).color;
 
-  const filtered = useMemo(
-    () => list.filter((p) => p.name.toLowerCase().includes(search.toLowerCase())),
-    [list, search]
-  );
+  /* ---------------------------------------------------------------- */
+  /* Search + filters — every option here reflects real, currently-    */
+  /* loaded data (universes/categories from the DB-backed catalog      */
+  /* lists), never a hardcoded set of business categories.             */
+  /* ---------------------------------------------------------------- */
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return products.filter((p) => {
+      if (q) {
+        const haystack = `${p.name} ${p.id} ${p.sku ?? ""} ${p.category} ${p.universe}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (categoryFilter !== "all" && p.category !== categoryFilter) return false;
+      if (universeFilter !== "all" && p.universe !== universeFilter) return false;
+      if (statusFilter !== "all" && (p.status ?? "active") !== statusFilter) return false;
+      if (stockFilter !== "all") {
+        const threshold = p.lowStockThreshold ?? 10;
+        const bucket = p.stock === 0 ? "out" : p.stock <= threshold ? "low" : "in";
+        if (bucket !== stockFilter) return false;
+      }
+      const min = priceMin.trim() ? Number(priceMin) : null;
+      const max = priceMax.trim() ? Number(priceMax) : null;
+      if (min !== null && !Number.isNaN(min) && p.price < min) return false;
+      if (max !== null && !Number.isNaN(max) && p.price > max) return false;
+      return true;
+    });
+  }, [products, search, categoryFilter, universeFilter, statusFilter, stockFilter, priceMin, priceMax]);
+
+  const activeFilterCount = [
+    categoryFilter !== "all",
+    universeFilter !== "all",
+    statusFilter !== "all",
+    stockFilter !== "all",
+    priceMin.trim() !== "",
+    priceMax.trim() !== "",
+  ].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setCategoryFilter("all");
+    setUniverseFilter("all");
+    setStatusFilter("all");
+    setStockFilter("all");
+    setPriceMin("");
+    setPriceMax("");
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Form open/populate                                                */
+  /* ---------------------------------------------------------------- */
 
   const openNew = () => {
-    // Default universe comes from whatever's currently loaded from
-    // Supabase (universeOptions), never a hard-coded id — that list can
-    // legitimately be empty (still loading, or every universe deleted).
     if (universeOptions.length === 0) {
-      toast({
-        variant: "error",
-        title: "No universes available",
-        description: "Add a universe before creating a product.",
-      });
+      toast({ variant: "error", title: "No universes available", description: "Add a universe before creating a product." });
       return;
     }
     setEditingId(null);
     setDraft({ ...emptyDraft, universe: universeOptions[0].id });
+    setSlugTouched(false);
     setCustomColorHex("#7C5CFF");
     setDialogOpen(true);
   };
 
   const openEdit = (p: Product) => {
     setEditingId(p.id);
-    // Prefer the new `images` array; fall back to the legacy single
-    // `image` field for products saved before this phase so their photo
-    // still shows up as Image 1 when editing.
     const existingImages = p.images && p.images.length > 0 ? p.images : p.image ? [p.image] : [];
     const slots: ImageSlots = [0, 1, 2].map((i): MediaSlot =>
       existingImages[i] ? { kind: "existing", url: existingImages[i] } : { kind: "empty" }
     ) as ImageSlots;
     setDraft({
       name: p.name,
+      description: p.description ?? "",
+      material: p.material ?? "",
       category: p.category,
       universe: p.universe,
       price: p.price,
+      compareAtPrice: p.compareAtPrice != null ? String(p.compareAtPrice) : "",
+      costPrice: p.costPrice != null ? String(p.costPrice) : "",
+      sku: p.sku ?? "",
       stock: p.stock,
-      artIcon: p.artIcon,
+      lowStockThreshold: p.lowStockThreshold ?? 10,
+      tags: p.tags ?? [],
       images: slots,
       video: p.video ? { kind: "existing", url: p.video } : { kind: "empty" },
       sizes: p.sizes,
       colors: p.colors ?? [],
+      featured: p.featured ?? false,
+      status: p.status ?? "active",
+      slug: p.slug,
+      seoTitle: p.seoTitle ?? "",
+      seoDescription: p.seoDescription ?? "",
     });
+
+    setSlugTouched(true); // editing an existing product: never silently rewrite its slug as the name changes
     setCustomColorHex("#7C5CFF");
     setDialogOpen(true);
   };
@@ -275,9 +415,13 @@ export default function AdminProductsPage() {
     });
   };
 
-  // Adds a color (predefined or custom) to the draft, guarding against
-  // duplicates by hex value (case-insensitive — hex is always stored
-  // normalized/uppercased, but this stays defensive either way).
+  const toggleTag = (tag: Product["tags"][number]) => {
+    setDraft((d) => ({
+      ...d,
+      tags: d.tags.includes(tag) ? d.tags.filter((t) => t !== tag) : [...d.tags, tag],
+    }));
+  };
+
   const addColor = (hex: string, name: string) => {
     setDraft((d) => {
       if (d.colors.some((c) => c.hex.toUpperCase() === hex.toUpperCase())) {
@@ -289,32 +433,22 @@ export default function AdminProductsPage() {
   };
 
   const removeColor = (hex: string) => {
-    setDraft((d) => ({
-      ...d,
-      colors: d.colors.filter((c) => c.hex.toUpperCase() !== hex.toUpperCase()),
-    }));
+    setDraft((d) => ({ ...d, colors: d.colors.filter((c) => c.hex.toUpperCase() !== hex.toUpperCase()) }));
   };
 
   const handleAddCustomColor = () => {
     if (!HEX_COLOR_PATTERN.test(customColorHex.trim())) {
-      toast({
-        variant: "error",
-        title: "Enter a valid hex color",
-        description: "e.g. #7C5CFF",
-      });
+      toast({ variant: "error", title: "Enter a valid hex color", description: "e.g. #7C5CFF" });
       return;
     }
     const hex = normalizeHex(customColorHex);
-    // Custom colors picked via the color input don't have a friendly name
-    // like the predefined palette does — the hex value itself doubles as
-    // the name so it still fits Product["colors"]' { name, hex } shape.
     addColor(hex, hex);
     setCustomColorHex(hex);
   };
 
   const handleImageChange = (index: 0 | 1 | 2) => (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-selecting the same file later
+    e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       toast({ variant: "error", title: "That's not an image file" });
@@ -370,22 +504,48 @@ export default function AdminProductsPage() {
     });
   };
 
-  // Object URLs created for local previews are only ever needed while this
-  // dialog is open — release them once it closes so we don't leak memory
-  // across repeated add/edit sessions. Existing (already-uploaded) media
-  // uses real Storage URLs, never object URLs, so this only ever touches
-  // locally-picked-but-not-yet-saved files.
   useEffect(() => {
     if (dialogOpen) return;
     draft.images.forEach((slot) => {
       if (slot.kind === "new") URL.revokeObjectURL(slot.previewUrl);
     });
     if (draft.video.kind === "new") URL.revokeObjectURL(draft.video.previewUrl);
-    // Only run this cleanup on the open -> closed transition, not on every
-    // draft change while the dialog is open (which would revoke previews
-    // that are still on screen).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen]);
+
+  /* ---------------------------------------------------------------- */
+  /* CRUD — direct Supabase calls (this page owns the all-statuses     */
+  /* list), with the storefront's active-only catalog resynced         */
+  /* afterward via refreshStorefrontProducts().                        */
+  /* ---------------------------------------------------------------- */
+
+  const persistAdd = async (product: Product) => {
+    setProducts((prev) => [product, ...prev]);
+    try {
+      if (product.status === "active") {
+        await catalogAddProduct(product);
+      } else {
+        const supabase = createClient();
+        await insertProduct(supabase, product);
+      }
+      void refreshStorefrontProducts();
+    } catch (err) {
+      setProducts((prev) => prev.filter((p) => p.id !== product.id));
+      throw err;
+    }
+  };
+
+  const persistUpdate = async (id: string, patch: Partial<Product>) => {
+    const previous = products;
+    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    try {
+      await catalogUpdateProduct(id, patch);
+      void refreshStorefrontProducts();
+    } catch (err) {
+      setProducts(previous);
+      throw err;
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -393,38 +553,36 @@ export default function AdminProductsPage() {
       toast({ variant: "error", title: "Product name is required" });
       return;
     }
-
-    // Source of truth is the currently-loaded universeOptions (Supabase),
-    // never an assumption that any particular id (e.g. "gaming") exists.
-    // Catches both the empty-list case and an edited product whose
-    // universe was deleted out from under it elsewhere (the Dropdown
-    // falls back to displaying options[0] in that case without actually
-    // changing draft.universe, so this check is what actually stops the
-    // stale id from being saved).
     if (!universeOptions.some((u) => u.id === draft.universe)) {
       toast({ variant: "error", title: "Please select a valid universe." });
       return;
     }
-
     if (draft.colors.length === 0) {
       toast({ variant: "error", title: "Select at least one color" });
+      return;
+    }
+    const compareAtPrice = draft.compareAtPrice.trim() ? Number(draft.compareAtPrice) : undefined;
+    if (compareAtPrice !== undefined && (Number.isNaN(compareAtPrice) || compareAtPrice < 0)) {
+      toast({ variant: "error", title: "Compare-at price must be a valid number" });
+      return;
+    }
+    const costPrice = draft.costPrice.trim() ? Number(draft.costPrice) : undefined;
+    if (costPrice !== undefined && (Number.isNaN(costPrice) || costPrice < 0)) {
+      toast({ variant: "error", title: "Cost price must be a valid number" });
       return;
     }
 
     setSaving(true);
     const supabase = createClient();
     const productId = editingId ?? `p${Date.now()}`;
+    const finalSlug =
+      slugTouched && draft.slug.trim()
+        ? uniqueSlug(draft.slug, products, editingId ?? undefined)
+        : uniqueSlug(draft.name, products, editingId ?? undefined);
 
-    // Every file uploaded during this attempt — rolled back (deleted) if
-    // the database write below fails, so a failed save never leaves
-    // orphaned files behind in Storage.
     const uploadedThisAttempt: string[] = [];
 
     try {
-      // 1. Upload any newly-picked images/video to Storage. Existing
-      //    (already-saved) slots are left exactly as-is — nothing gets
-      //    deleted yet, even for a slot the admin just replaced or
-      //    removed, until the database write below actually succeeds.
       const finalImages: string[] = [];
       for (let i = 0; i < draft.images.length; i++) {
         const slot = draft.images[i];
@@ -445,10 +603,7 @@ export default function AdminProductsPage() {
         finalVideo = draft.video.url;
       }
 
-      // 2. Work out which previously-saved media is no longer referenced
-      //    after this save (replaced or removed), so it can be cleaned up
-      //    — but only once the database write below succeeds.
-      const existing = editingId ? list.find((p) => p.id === editingId) : undefined;
+      const existing = editingId ? products.find((p) => p.id === editingId) : undefined;
       const existingImageUrls = existing
         ? existing.images && existing.images.length > 0
           ? existing.images
@@ -461,62 +616,48 @@ export default function AdminProductsPage() {
         existing?.video && existing.video !== finalVideo ? existing.video : undefined,
       ];
 
-      // 3. Write the product row itself.
-      const mediaPatch = {
+      const sharedPatch = {
         name: draft.name,
+        slug: finalSlug,
+        description: draft.description,
+        material: draft.material,
         category: draft.category,
         universe: draft.universe,
         price: draft.price,
+        compareAtPrice,
+        costPrice,
+        sku: draft.sku.trim() || undefined,
         stock: draft.stock,
-        artIcon: draft.artIcon,
+        lowStockThreshold: draft.lowStockThreshold,
+        tags: draft.tags,
         sizes: draft.sizes,
         colors: draft.colors,
         images: finalImages,
         image: finalImages[0],
         video: finalVideo,
+        featured: draft.featured,
+        status: draft.status,
+        seoTitle: draft.seoTitle.trim() || undefined,
+        seoDescription: draft.seoDescription.trim() || undefined,
       };
 
+
       if (editingId) {
-        await updateProduct(editingId, mediaPatch);
+        await persistUpdate(editingId, sharedPatch);
         toast({ variant: "success", title: "Product updated", description: draft.name });
       } else {
-        // Built explicitly from the form + sensible defaults — never
-        // copied from an arbitrary existing product (see PROGRESS notes:
-        // that used to borrow list[0]'s description/material/colors/tags,
-        // which could silently attach a random product's data to a new
-        // one). Colors now come from the admin's own selections in the
-        // "Product colors" section (validated non-empty above) so
-        // components that assume at least one color (e.g. the wishlist
-        // "add all to cart") keep working without a hardcoded fallback.
         const newProduct: Product = {
           id: productId,
-          slug: uniqueSlug(draft.name, list),
-          name: draft.name,
-          universe: draft.universe,
-          category: draft.category,
-          price: draft.price,
-          compareAtPrice: undefined,
-          description: "",
-          material: "",
-          sizes: draft.sizes,
-          colors: draft.colors,
           rating: 0,
           reviewCount: 0,
-          stock: draft.stock,
-          tags: [],
-          artIcon: draft.artIcon,
-          images: finalImages,
-          image: finalImages[0],
-          video: finalVideo ?? undefined,
+          artIcon: DEFAULT_ART_ICON,
           createdAt: new Date().toISOString(),
+          ...sharedPatch,
         };
-        await addProduct(newProduct);
+        await persistAdd(newProduct);
         toast({ variant: "success", title: "Product added", description: draft.name });
       }
 
-      // 4. Only now that the database write has actually succeeded, clean
-      //    up any media that got replaced or removed. Best-effort — this
-      //    never affects the product, which is already saved either way.
       if (staleUrls.length > 0) {
         void deleteProductMediaMany(supabase, staleUrls);
       }
@@ -524,45 +665,119 @@ export default function AdminProductsPage() {
       setDialogOpen(false);
     } catch (err) {
       console.error("[admin products] Failed to save product:", getErrorMessage(err), err);
-
-      // The database write didn't happen (or we never got that far) —
-      // don't leave this attempt's freshly-uploaded files stranded in
-      // Storage.
       if (uploadedThisAttempt.length > 0) {
         void deleteProductMediaMany(supabase, uploadedThisAttempt);
       }
-
       toast({
         variant: "error",
         title: editingId ? "Couldn't save changes" : "Couldn't add product",
         description: getErrorMessage(err),
       });
-      // Deliberately leave the dialog open so the admin doesn't lose their
-      // draft and can retry — closing here would make a failed save look
-      // like it succeeded.
     } finally {
       setSaving(false);
     }
   };
 
-  const requestDelete = (p: Product) => {
-    setDeleteTarget(p);
+  /* ---------------------------------------------------------------- */
+  /* Duplicate                                                         */
+  /* ---------------------------------------------------------------- */
+
+  const handleDuplicate = async (p: Product) => {
+    const duplicate: Product = {
+      ...p,
+      id: `p${Date.now()}`,
+      slug: uniqueSlug(`${p.name} copy`, products),
+      name: `${p.name} (Copy)`,
+      status: "draft",
+      featured: false,
+      rating: 0,
+      reviewCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: undefined,
+      // Photos aren't duplicated onto a second product record — they'd
+      // point at the same Storage files, and deleting/replacing either
+      // product's media would silently break the other's. The duplicate
+      // starts fresh; the admin uploads its own photos.
+      image: undefined,
+      images: [],
+      video: undefined,
+    };
+    try {
+      await persistAdd(duplicate);
+      toast({
+        variant: "success",
+        title: "Product duplicated",
+        description: `${duplicate.name} — saved as a draft. Upload new photos before publishing.`,
+      });
+    } catch (err) {
+      toast({ variant: "error", title: "Couldn't duplicate product", description: getErrorMessage(err) });
+    }
   };
 
-  const confirmDelete = () => {
-    if (!deleteTarget) return;
-    deleteProduct(deleteTarget.id);
-    toast({ variant: "info", title: "Product removed", description: deleteTarget.name });
+  /* ---------------------------------------------------------------- */
+  /* Delete — checks real order_items dependencies first               */
+  /* ---------------------------------------------------------------- */
+
+  const requestDelete = async (p: Product) => {
+    setDeleteTarget({ product: p, orderCount: null }); // null = still checking
+    try {
+      const supabase = createClient();
+      const orderCount = await countProductOrderItems(supabase, p.id);
+      setDeleteTarget({ product: p, orderCount });
+    } catch (err) {
+      setDeleteTarget(null);
+      toast({ variant: "error", title: "Couldn't check order history", description: getErrorMessage(err) });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleteTarget.orderCount === null || deleteTarget.orderCount > 0) return;
+    const { product } = deleteTarget;
+    const previous = products;
+    setProducts((prev) => prev.filter((p) => p.id !== product.id));
     setDeleteTarget(null);
+    try {
+      catalogDeleteProduct(product.id);
+      void refreshStorefrontProducts();
+      toast({ variant: "info", title: "Product deleted", description: product.name });
+    } catch (err) {
+      setProducts(previous);
+      toast({ variant: "error", title: "Couldn't delete product", description: getErrorMessage(err) });
+    }
+  };
+
+  const archiveInsteadOfDelete = async () => {
+    if (!deleteTarget) return;
+    const { product } = deleteTarget;
+    setDeleteTarget(null);
+    try {
+      await persistUpdate(product.id, { status: "archived" });
+      toast({ variant: "success", title: "Product archived", description: `${product.name} is hidden from the storefront.` });
+    } catch (err) {
+      toast({ variant: "error", title: "Couldn't archive product", description: getErrorMessage(err) });
+    }
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Status quick-toggle + CSV + reset                                 */
+  /* ---------------------------------------------------------------- */
+
+  const handleStatusChange = async (p: Product, status: NonNullable<Product["status"]>) => {
+    try {
+      await persistUpdate(p.id, { status });
+      toast({ variant: "success", title: "Status updated", description: `${p.name} → ${status}` });
+    } catch (err) {
+      toast({ variant: "error", title: "Couldn't update status", description: getErrorMessage(err) });
+    }
   };
 
   const handleExportCSV = () => {
-    if (list.length === 0) {
+    if (products.length === 0) {
       toast({ variant: "error", title: "No products to export" });
       return;
     }
-    downloadCSV(`fandomwear-products-${new Date().toISOString().slice(0, 10)}.csv`, productsToCSV(list));
-    toast({ variant: "success", title: "Exported", description: `${list.length} products` });
+    downloadCSV(`fandomwear-products-${new Date().toISOString().slice(0, 10)}.csv`, productsToCSV(products));
+    toast({ variant: "success", title: "Exported", description: `${products.length} products` });
   };
 
   const handleImportClick = () => csvInputRef.current?.click();
@@ -571,18 +786,35 @@ export default function AdminProductsPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (list.length === 0) {
-      toast({ variant: "error", title: "Add at least one product first", description: "Import needs an existing product as a template for missing fields." });
+    if (products.length === 0) {
+      toast({
+        variant: "error",
+        title: "Add at least one product first",
+        description: "Import needs an existing product as a template for missing fields.",
+      });
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       const text = reader.result as string;
       const rows = parseCSV(text);
-      const { products: imported, errors } = rowsToProducts(rows, list[0]);
+      const { products: imported, errors } = rowsToProducts(rows, products[0]);
       if (imported.length > 0) {
-        importProducts(imported);
-        toast({ variant: "success", title: "Imported", description: `${imported.length} products` });
+        (async () => {
+          try {
+            const supabase = createClient();
+            const saved = await upsertProducts(supabase, imported);
+            setProducts((prev) => {
+              const byId = new Map(prev.map((p) => [p.id, p]));
+              saved.forEach((p) => byId.set(p.id, p));
+              return Array.from(byId.values());
+            });
+            void refreshStorefrontProducts();
+            toast({ variant: "success", title: "Imported", description: `${imported.length} products` });
+          } catch (err) {
+            toast({ variant: "error", title: "Import failed", description: getErrorMessage(err) });
+          }
+        })();
       }
       if (errors.length > 0) {
         toast({ variant: "error", title: "Some rows were skipped", description: errors.slice(0, 3).join(" ") });
@@ -592,36 +824,39 @@ export default function AdminProductsPage() {
     reader.readAsText(file);
   };
 
-  const confirmReset = () => {
-    resetToSeed();
+  const confirmReset = async () => {
+    await resetToSeed();
+    await loadAdminProducts();
     setResetConfirmOpen(false);
     toast({ variant: "info", title: "Catalog reset", description: "Products, universes, and categories restored to defaults." });
   };
+
+  const isLoading = loadStatus === "loading";
+  const isError = loadStatus === "error";
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-ink">Products</h1>
-          <p className="mt-1 text-sm text-ink-faint">{list.length} products in catalog</p>
+          <p className="mt-1 text-sm text-ink-faint">
+            {isLoading ? "Loading…" : `${filtered.length} of ${products.length} products`}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products..."
+              placeholder="Search name, SKU, category…"
               className="h-10 w-56 rounded-full border border-line bg-surface pl-10 pr-4 text-sm text-ink placeholder:text-ink-faint focus:border-accent-cyan focus:outline-none"
             />
           </div>
-          <input
-            ref={csvInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            onChange={handleImportFile}
-            className="hidden"
-          />
+          <Button variant="outline" size="sm" onClick={() => setFiltersOpen((o) => !o)}>
+            <SlidersHorizontal className="h-4 w-4" /> Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+          </Button>
+          <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} className="hidden" />
           <Button variant="outline" size="sm" onClick={handleImportClick}>
             <Upload className="h-4 w-4" /> Import CSV
           </Button>
@@ -634,13 +869,11 @@ export default function AdminProductsPage() {
           <Dialog open={optionsDialogOpen} onOpenChange={setOptionsDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm">
-                <Save className="h-4 w-4" /> Save universes & categories
+                <Save className="h-4 w-4" /> Universes & categories
               </Button>
             </DialogTrigger>
             <DialogContent title="Universes & categories">
-              <p className="text-xs text-ink-faint">
-                Changes here save immediately — no need to add a product.
-              </p>
+              <p className="text-xs text-ink-faint">Changes here save immediately — no need to add a product.</p>
               <div className="mt-3.5 grid gap-4 sm:grid-cols-2">
                 <div>
                   <span className="text-xs font-medium text-ink-dim">Universes</span>
@@ -661,13 +894,7 @@ export default function AdminProductsPage() {
                   />
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="accent"
-                size="md"
-                className="mt-4"
-                onClick={() => setOptionsDialogOpen(false)}
-              >
+              <Button type="button" variant="accent" size="md" className="mt-4" onClick={() => setOptionsDialogOpen(false)}>
                 Done
               </Button>
             </DialogContent>
@@ -678,245 +905,275 @@ export default function AdminProductsPage() {
                 <Plus className="h-4 w-4" /> Add product
               </Button>
             </DialogTrigger>
-            <DialogContent title={editingId ? "Edit product" : "Add product"}>
-              <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
-                <label>
-                  <span className="text-xs font-medium text-ink-dim">Name</span>
-                  <input
-                    required
-                    value={draft.name}
-                    onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                    className="mt-1.5 h-11 w-full rounded-xl border border-line bg-void px-4 text-sm text-ink focus:border-accent-cyan focus:outline-none"
-                  />
-                </label>
+            <DialogContent title={editingId ? "Edit product" : "Add product"} className="max-w-2xl">
+              <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+                <FormSection title="Basic information">
+                  <label>
+                    <span className="text-xs font-medium text-ink-dim">Product name</span>
+                    <input
+                      required
+                      value={draft.name}
+                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                      className={inputClass}
+                    />
+                  </label>
+                  <label>
+                    <span className="text-xs font-medium text-ink-dim">Description</span>
+                    <textarea
+                      value={draft.description}
+                      onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+                      rows={3}
+                      className={cn(inputClass, "h-auto resize-y py-2.5")}
+                    />
+                  </label>
+                  <label>
+                    <span className="text-xs font-medium text-ink-dim">Material</span>
+                    <input
+                      value={draft.material}
+                      onChange={(e) => setDraft((d) => ({ ...d, material: e.target.value }))}
+                      placeholder="e.g. 260gsm ring-spun cotton"
+                      className={inputClass}
+                    />
+                  </label>
+                </FormSection>
 
-                <div>
-                  <span className="text-xs font-medium text-ink-dim">Product images</span>
-                  <p className="mt-1 text-[11px] text-ink-faint">
-                    Up to 3 photos. Image 1 is the main/front photo shown across the storefront.
-                  </p>
-                  <div className="mt-1.5 grid grid-cols-3 gap-3">
-                    {([0, 1, 2] as const).map((index) => {
-                      const slot = draft.images[index];
-                      const slotSrc = slotPreviewSrc(slot);
-                      return (
-                        <div key={index} className="flex flex-col gap-1.5">
-                          <span className="text-[11px] font-medium text-ink-faint">
-                            {IMAGE_SLOT_LABELS[index]}
-                          </span>
-                          <ProductVisual
-                            image={slotSrc}
-                            color={resolveUniverseColor(draft.universe)}
-                            icon={draft.artIcon}
-                            className="aspect-square w-full"
-                          />
-                          <input
-                            ref={imageInputRefs[index]}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageChange(index)}
-                            className="hidden"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => imageInputRefs[index].current?.click()}
-                          >
-                            <Upload className="h-3.5 w-3.5" /> {slot.kind !== "empty" ? "Replace" : "Upload"}
-                          </Button>
-                          {slot.kind !== "empty" && (
-                            <Button type="button" variant="ghost" size="sm" onClick={() => removeImage(index)}>
-                              <X className="h-3.5 w-3.5" /> Remove
-                            </Button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-ink-faint">
-                    JPG or PNG, up to 4MB each. Slots left empty use a placeholder until a photo is uploaded.
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-xs font-medium text-ink-dim">Product video</span>
-                  <p className="mt-1 text-[11px] text-ink-faint">Optional. One video max.</p>
-                  <div className="mt-1.5 flex items-start gap-3">
-                    {draft.video.kind !== "empty" ? (
-                      <video
-                        src={slotPreviewSrc(draft.video)}
-                        controls
-                        className="h-20 w-32 shrink-0 rounded-xl border border-line bg-void object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-xl border border-dashed border-line text-ink-faint">
-                        <Film className="h-6 w-6" />
-                      </div>
-                    )}
-                    <div className="flex flex-1 flex-col gap-1.5">
+                <FormSection title="Pricing">
+                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">Price (EGP)</span>
                       <input
-                        ref={videoInputRef}
-                        type="file"
-                        accept="video/*"
-                        onChange={handleVideoChange}
-                        className="hidden"
+                        required
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={draft.price}
+                        onChange={(e) => setDraft((d) => ({ ...d, price: Number(e.target.value) }))}
+                        className={inputClass}
                       />
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => videoInputRef.current?.click()}
-                        >
-                          <Upload className="h-3.5 w-3.5" /> {draft.video.kind !== "empty" ? "Replace video" : "Upload video"}
-                        </Button>
-                        {draft.video.kind !== "empty" && (
-                          <Button type="button" variant="ghost" size="sm" onClick={removeVideo}>
-                            <X className="h-3.5 w-3.5" /> Remove
-                          </Button>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-ink-faint">
-                        MP4 or MOV, up to 20MB. {draft.video.kind !== "empty" ? "" : "No video yet — this is optional."}
-                      </p>
+                    </label>
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">Compare-at price</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="Optional"
+                        value={draft.compareAtPrice}
+                        onChange={(e) => setDraft((d) => ({ ...d, compareAtPrice: e.target.value }))}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">Cost per item / COGS</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="e.g. 15.00"
+                        value={draft.costPrice}
+                        onChange={(e) => setDraft((d) => ({ ...d, costPrice: e.target.value }))}
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+                  {draft.costPrice.trim() !== "" && !Number.isNaN(Number(draft.costPrice)) && draft.price > 0 && (
+                    <div className="mt-1 flex flex-wrap items-center gap-4 rounded-xl border border-line bg-surface px-3 py-2 text-xs">
+                      <span className="text-ink-faint">
+                        Profit per item:{" "}
+                        <strong className={cn(draft.price - Number(draft.costPrice) >= 0 ? "text-emerald-400" : "text-accent-red")}>
+                          {formatPrice(draft.price - Number(draft.costPrice))}
+                        </strong>
+                      </span>
+                      <span className="text-ink-faint">
+                        Margin:{" "}
+                        <strong className={cn(draft.price - Number(draft.costPrice) >= 0 ? "text-emerald-400" : "text-accent-red")}>
+                          {Math.round(((draft.price - Number(draft.costPrice)) / draft.price) * 100)}%
+                        </strong>
+                      </span>
+                    </div>
+                  )}
+                </FormSection>
+
+
+                <FormSection title="Inventory">
+                  <div className="grid grid-cols-3 gap-3.5">
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">SKU</span>
+                      <input
+                        value={draft.sku}
+                        onChange={(e) => setDraft((d) => ({ ...d, sku: e.target.value }))}
+                        placeholder="Optional"
+                        className={inputClass}
+                      />
+                    </label>
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">Stock</span>
+                      <input
+                        required
+                        type="number"
+                        min={0}
+                        value={draft.stock}
+                        onChange={(e) => setDraft((d) => ({ ...d, stock: Number(e.target.value) }))}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">Low-stock threshold</span>
+                      <input
+                        required
+                        type="number"
+                        min={0}
+                        value={draft.lowStockThreshold}
+                        onChange={(e) => setDraft((d) => ({ ...d, lowStockThreshold: Number(e.target.value) }))}
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+                </FormSection>
+
+                <FormSection title="Organization">
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">Universe</span>
+                      <Dropdown
+                        className="mt-1.5"
+                        fullWidth
+                        ariaLabel="Universe"
+                        value={draft.universe}
+                        options={universeOptions.map((u) => ({ value: u.id, label: u.label }))}
+                        onChange={(universe) => setDraft((d) => ({ ...d, universe }))}
+                      />
+                      <ManageOptionsList
+                        items={universeOptions.map((u) => ({ value: u.id, label: u.label, color: u.color }))}
+                        onAdd={addUniverseOption}
+                        onRemove={removeUniverseOption}
+                        addPlaceholder="Add universe..."
+                      />
+                    </label>
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">Category</span>
+                      <Dropdown
+                        className="mt-1.5"
+                        fullWidth
+                        ariaLabel="Category"
+                        value={draft.category}
+                        options={categoryOptions.map((c) => ({ value: c, label: c }))}
+                        onChange={(category) => setDraft((d) => ({ ...d, category }))}
+                      />
+                      <ManageOptionsList
+                        items={categoryOptions.map((c) => ({ value: c, label: c }))}
+                        onAdd={addCategoryOption}
+                        onRemove={removeCategoryOption}
+                        addPlaceholder="Add category..."
+                      />
+                    </label>
+                  </div>
+                  <div>
+                    <span className="text-xs font-medium text-ink-dim">Tags</span>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {ALL_TAGS.map((tag) => {
+                        const active = draft.tags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => toggleTag(tag)}
+                            aria-pressed={active}
+                            className={cn(
+                              "rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors",
+                              active
+                                ? "border-accent-purple bg-accent-purple/15 text-accent-purple"
+                                : "border-line text-ink-faint hover:border-ink-faint hover:text-ink"
+                            )}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3.5">
-                  <label>
-                    <span className="text-xs font-medium text-ink-dim">Universe</span>
-                    <Dropdown
-                      className="mt-1.5"
-                      fullWidth
-                      ariaLabel="Universe"
-                      value={draft.universe}
-                      options={universeOptions.map((u) => ({ value: u.id, label: u.label }))}
-                      onChange={(universe) => setDraft((d) => ({ ...d, universe }))}
-                    />
-                    <ManageOptionsList
-                      items={universeOptions.map((u) => ({ value: u.id, label: u.label, color: u.color }))}
-                      onAdd={addUniverseOption}
-                      onRemove={removeUniverseOption}
-                      addPlaceholder="Add universe..."
-                    />
-                  </label>
-                  <label>
-                    <span className="text-xs font-medium text-ink-dim">Category</span>
-                    <Dropdown
-                      className="mt-1.5"
-                      fullWidth
-                      ariaLabel="Category"
-                      value={draft.category}
-                      options={categoryOptions.map((c) => ({ value: c, label: c }))}
-                      onChange={(category) => setDraft((d) => ({ ...d, category }))}
-                    />
-                    <ManageOptionsList
-                      items={categoryOptions.map((c) => ({ value: c, label: c }))}
-                      onAdd={addCategoryOption}
-                      onRemove={removeCategoryOption}
-                      addPlaceholder="Add category..."
-                    />
-                  </label>
-                </div>
-                <div>
-                  <span className="text-xs font-medium text-ink-dim">Sizes available to customers</span>
-                  <div className="mt-1.5 flex flex-wrap gap-2">
-                    {ALL_SIZES.map((s) => {
-                      const active = draft.sizes.includes(s);
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => toggleSize(s)}
-                          aria-pressed={active}
-                          className={cn(
-                            "h-10 w-14 rounded-xl border text-sm font-semibold transition-colors",
-                            active
-                              ? "border-accent-purple bg-accent-purple/15 text-accent-purple"
-                              : "border-line text-ink-faint hover:border-ink-faint hover:text-ink"
-                          )}
-                        >
-                          {s}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-ink-faint">
-                    Only the sizes selected here will be choosable on the product page.
-                  </p>
-                </div>
+                </FormSection>
 
-                <div>
-                  <span className="text-xs font-medium text-ink-dim">Product colors</span>
-                  <p className="mt-1 text-[11px] text-ink-faint">
-                    Choose from common colors or add any custom color with the picker below.
-                  </p>
-
-                  <div className="mt-1.5 flex flex-wrap gap-2">
-                    {PREDEFINED_COLORS.map((color) => {
-                      const active = draft.colors.some(
-                        (c) => c.hex.toUpperCase() === color.hex.toUpperCase()
-                      );
-                      return (
-                        <button
-                          key={color.hex}
-                          type="button"
-                          onClick={() => addColor(color.hex, color.name)}
-                          aria-pressed={active}
-                          title={color.name}
-                          className={cn(
-                            "flex h-9 items-center gap-2 rounded-full border pl-2 pr-3 text-xs font-medium transition-colors",
-                            active
-                              ? "border-accent-purple bg-accent-purple/15 text-accent-purple"
-                              : "border-line text-ink-faint hover:border-ink-faint hover:text-ink"
-                          )}
-                        >
-                          <span
-                            className="h-4 w-4 rounded-full border border-line/60"
-                            style={{ backgroundColor: color.hex }}
-                          />
-                          {color.name}
-                        </button>
-                      );
-                    })}
+                <FormSection title="Variants">
+                  <div>
+                    <span className="text-xs font-medium text-ink-dim">Sizes available to customers</span>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {ALL_SIZES.map((s) => {
+                        const active = draft.sizes.includes(s);
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => toggleSize(s)}
+                            aria-pressed={active}
+                            className={cn(
+                              "h-10 w-14 rounded-xl border text-sm font-semibold transition-colors",
+                              active
+                                ? "border-accent-purple bg-accent-purple/15 text-accent-purple"
+                                : "border-line text-ink-faint hover:border-ink-faint hover:text-ink"
+                            )}
+                          >
+                            {s}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="text-[11px] font-medium text-ink-faint">Custom color:</span>
-                    <input
-                      type="color"
-                      value={HEX_COLOR_PATTERN.test(customColorHex.trim()) ? normalizeHex(customColorHex) : "#000000"}
-                      onChange={(e) => setCustomColorHex(e.target.value.toUpperCase())}
-                      aria-label="Custom color picker"
-                      className="h-10 w-12 cursor-pointer rounded-lg border border-line bg-void p-1"
-                    />
-                    <input
-                      type="text"
-                      value={customColorHex}
-                      onChange={(e) => setCustomColorHex(e.target.value)}
-                      placeholder="#7C5CFF"
-                      maxLength={7}
-                      className="h-10 w-28 rounded-xl border border-line bg-void px-3 text-sm font-mono uppercase text-ink focus:border-accent-cyan focus:outline-none"
-                    />
-                    <Button type="button" variant="outline" size="sm" onClick={handleAddCustomColor}>
-                      <Plus className="h-3.5 w-3.5" /> Add color
-                    </Button>
-                  </div>
-
-                  {draft.colors.length > 0 && (
-                    <div className="mt-3">
-                      <span className="text-[11px] font-medium text-ink-faint">Selected colors:</span>
-                      <div className="mt-1.5 flex flex-wrap gap-2">
+                  <div>
+                    <span className="text-xs font-medium text-ink-dim">Product colors</span>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {PREDEFINED_COLORS.map((color) => {
+                        const active = draft.colors.some((c) => c.hex.toUpperCase() === color.hex.toUpperCase());
+                        return (
+                          <button
+                            key={color.hex}
+                            type="button"
+                            onClick={() => addColor(color.hex, color.name)}
+                            aria-pressed={active}
+                            title={color.name}
+                            className={cn(
+                              "flex h-9 items-center gap-2 rounded-full border pl-2 pr-3 text-xs font-medium transition-colors",
+                              active
+                                ? "border-accent-purple bg-accent-purple/15 text-accent-purple"
+                                : "border-line text-ink-faint hover:border-ink-faint hover:text-ink"
+                            )}
+                          >
+                            <span className="h-4 w-4 rounded-full border border-line/60" style={{ backgroundColor: color.hex }} />
+                            {color.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-medium text-ink-faint">Custom color:</span>
+                      <input
+                        type="color"
+                        value={HEX_COLOR_PATTERN.test(customColorHex.trim()) ? normalizeHex(customColorHex) : "#000000"}
+                        onChange={(e) => setCustomColorHex(e.target.value.toUpperCase())}
+                        aria-label="Custom color picker"
+                        className="h-10 w-12 cursor-pointer rounded-lg border border-line bg-void p-1"
+                      />
+                      <input
+                        type="text"
+                        value={customColorHex}
+                        onChange={(e) => setCustomColorHex(e.target.value)}
+                        placeholder="#7C5CFF"
+                        maxLength={7}
+                        className="h-10 w-28 rounded-xl border border-line bg-void px-3 text-sm font-mono uppercase text-ink focus:border-accent-cyan focus:outline-none"
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={handleAddCustomColor}>
+                        <Plus className="h-3.5 w-3.5" /> Add color
+                      </Button>
+                    </div>
+                    {draft.colors.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
                         {draft.colors.map((color) => (
                           <span
                             key={color.hex}
                             className="flex items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1.5 pr-2.5 font-mono text-xs text-ink-dim"
                           >
-                            <span
-                              className="h-5 w-5 rounded-full border border-line/60"
-                              style={{ backgroundColor: color.hex }}
-                            />
+                            <span className="h-5 w-5 rounded-full border border-line/60" style={{ backgroundColor: color.hex }} />
                             {color.hex}
                             <button
                               type="button"
@@ -929,40 +1186,148 @@ export default function AdminProductsPage() {
                           </span>
                         ))}
                       </div>
+                    )}
+                    <p className="mt-1.5 text-[11px] text-ink-faint">At least one color is required.</p>
+                  </div>
+                </FormSection>
+
+                <FormSection title="Media">
+                  <div>
+                    <span className="text-xs font-medium text-ink-dim">Product images</span>
+                    <p className="mt-1 text-[11px] text-ink-faint">
+                      Up to 3 photos, in display order. Image 1 is the main/front photo used across the storefront.
+                    </p>
+                    <div className="mt-1.5 grid grid-cols-3 gap-3">
+                      {([0, 1, 2] as const).map((index) => {
+                        const slot = draft.images[index];
+                        const slotSrc = slotPreviewSrc(slot);
+                        return (
+                          <div key={index} className="flex flex-col gap-1.5">
+                            <span className="text-[11px] font-medium text-ink-faint">{IMAGE_SLOT_LABELS[index]}</span>
+                            <ProductVisual
+                              image={slotSrc}
+                              color={resolveUniverseColor(draft.universe)}
+                              icon={DEFAULT_ART_ICON}
+                              className="aspect-square w-full"
+                            />
+                            <input
+                              ref={imageInputRefs[index]}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleImageChange(index)}
+                              className="hidden"
+                            />
+                            <Button type="button" variant="outline" size="sm" onClick={() => imageInputRefs[index].current?.click()}>
+                              <Upload className="h-3.5 w-3.5" /> {slot.kind !== "empty" ? "Replace" : "Upload"}
+                            </Button>
+                            {slot.kind !== "empty" && (
+                              <Button type="button" variant="ghost" size="sm" onClick={() => removeImage(index)}>
+                                <X className="h-3.5 w-3.5" /> Remove
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  )}
+                  </div>
 
-                  <p className="mt-1.5 text-[11px] text-ink-faint">
-                    At least one color is required. Duplicate colors are ignored.
-                  </p>
-                </div>
+                  <div>
+                    <span className="text-xs font-medium text-ink-dim">Product video</span>
+                    <p className="mt-1 text-[11px] text-ink-faint">Optional. One video max.</p>
+                    <div className="mt-1.5 flex items-start gap-3">
+                      {draft.video.kind !== "empty" ? (
+                        <video src={slotPreviewSrc(draft.video)} controls className="h-20 w-32 shrink-0 rounded-xl border border-line bg-void object-cover" />
+                      ) : (
+                        <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-xl border border-dashed border-line text-ink-faint">
+                          <Film className="h-6 w-6" />
+                        </div>
+                      )}
+                      <div className="flex flex-1 flex-col gap-1.5">
+                        <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" />
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => videoInputRef.current?.click()}>
+                            <Upload className="h-3.5 w-3.5" /> {draft.video.kind !== "empty" ? "Replace video" : "Upload video"}
+                          </Button>
+                          {draft.video.kind !== "empty" && (
+                            <Button type="button" variant="ghost" size="sm" onClick={removeVideo}>
+                              <X className="h-3.5 w-3.5" /> Remove
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </FormSection>
 
-                <div className="grid grid-cols-2 gap-3.5">
+                <FormSection title="Store settings">
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <label>
+                      <span className="text-xs font-medium text-ink-dim">Status</span>
+                      <Dropdown
+                        className="mt-1.5"
+                        fullWidth
+                        ariaLabel="Status"
+                        value={draft.status}
+                        options={ALL_STATUSES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }))}
+                        onChange={(status) => setDraft((d) => ({ ...d, status: status as Draft["status"] }))}
+                      />
+                    </label>
+                    <label className="flex flex-col justify-end">
+                      <span className="text-xs font-medium text-ink-dim">Featured</span>
+                      <button
+                        type="button"
+                        onClick={() => setDraft((d) => ({ ...d, featured: !d.featured }))}
+                        aria-pressed={draft.featured}
+                        className={cn(
+                          "mt-1.5 flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-medium transition-colors",
+                          draft.featured
+                            ? "border-accent-purple bg-accent-purple/15 text-accent-purple"
+                            : "border-line text-ink-faint hover:border-ink-faint hover:text-ink"
+                        )}
+                      >
+                        <Star className={cn("h-3.5 w-3.5", draft.featured && "fill-accent-purple")} />
+                        {draft.featured ? "Featured on homepage" : "Not featured"}
+                      </button>
+                    </label>
+                  </div>
                   <label>
-                    <span className="text-xs font-medium text-ink-dim">Price (EGP)</span>
+                    <span className="text-xs font-medium text-ink-dim">Slug</span>
                     <input
-                      required
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={draft.price}
-                      onChange={(e) => setDraft((d) => ({ ...d, price: Number(e.target.value) }))}
-                      className="mt-1.5 h-11 w-full rounded-xl border border-line bg-void px-4 text-sm text-ink focus:border-accent-cyan focus:outline-none"
+                      value={draft.slug}
+                      onChange={(e) => {
+                        setSlugTouched(true);
+                        setDraft((d) => ({ ...d, slug: e.target.value }));
+                      }}
+                      placeholder={slugify(draft.name) || "auto-generated-from-name"}
+                      className={cn(inputClass, "font-mono")}
+                    />
+                    <p className="mt-1 text-[11px] text-ink-faint">Leave blank to auto-generate from the product name.</p>
+                  </label>
+                </FormSection>
+
+                <FormSection title="SEO">
+                  <label>
+                    <span className="text-xs font-medium text-ink-dim">SEO title</span>
+                    <input
+                      value={draft.seoTitle}
+                      onChange={(e) => setDraft((d) => ({ ...d, seoTitle: e.target.value }))}
+                      placeholder={draft.name || "Optional"}
+                      className={inputClass}
                     />
                   </label>
                   <label>
-                    <span className="text-xs font-medium text-ink-dim">Stock</span>
-                    <input
-                      required
-                      type="number"
-                      min={0}
-                      value={draft.stock}
-                      onChange={(e) => setDraft((d) => ({ ...d, stock: Number(e.target.value) }))}
-                      className="mt-1.5 h-11 w-full rounded-xl border border-line bg-void px-4 text-sm text-ink focus:border-accent-cyan focus:outline-none"
+                    <span className="text-xs font-medium text-ink-dim">SEO description</span>
+                    <textarea
+                      value={draft.seoDescription}
+                      onChange={(e) => setDraft((d) => ({ ...d, seoDescription: e.target.value }))}
+                      rows={2}
+                      placeholder="Optional"
+                      className={cn(inputClass, "h-auto resize-y py-2.5")}
                     />
                   </label>
-                </div>
-                <Button type="submit" variant="accent" size="md" className="mt-2" disabled={saving}>
+                </FormSection>
+
+                <Button type="submit" variant="accent" size="md" disabled={saving}>
                   {saving ? "Saving..." : editingId ? "Save changes" : "Add product"}
                 </Button>
               </form>
@@ -971,94 +1336,244 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-line">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-line bg-surface text-xs uppercase tracking-wider text-ink-faint">
-              <th className="px-4 py-3 font-medium">Product</th>
-              <th className="px-4 py-3 font-medium">Universe</th>
-              <th className="px-4 py-3 font-medium">Price</th>
-              <th className="px-4 py-3 font-medium">Stock</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p) => {
-              const universe = getUniverse(p.universe);
-              const status = p.stock === 0 ? "out" : p.stock <= 30 ? "low" : "healthy";
-              return (
-                <tr key={p.id} className="border-b border-line/60 last:border-0">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <ProductVisual image={p.image} color={universe.color} icon={p.artIcon} className="h-10 w-10 shrink-0" />
-                      <div>
-                        <p className="font-medium text-ink">{p.name}</p>
-                        <p className="text-xs text-ink-faint">{p.category}</p>
+      {filtersOpen && (
+        <div className="mt-4 flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-surface p-4">
+          <FilterField label="Category">
+            <Dropdown
+              ariaLabel="Filter by category"
+              value={categoryFilter}
+              options={[{ value: "all", label: "All categories" }, ...categoryOptions.map((c) => ({ value: c, label: c }))]}
+              onChange={setCategoryFilter}
+            />
+          </FilterField>
+          <FilterField label="Universe">
+            <Dropdown
+              ariaLabel="Filter by universe"
+              value={universeFilter}
+              options={[{ value: "all", label: "All universes" }, ...universeOptions.map((u) => ({ value: u.id, label: u.label }))]}
+              onChange={setUniverseFilter}
+            />
+          </FilterField>
+          <FilterField label="Status">
+            <Dropdown
+              ariaLabel="Filter by status"
+              value={statusFilter}
+              options={[
+                { value: "all", label: "All statuses" },
+                { value: "active", label: "Active" },
+                { value: "draft", label: "Draft" },
+                { value: "archived", label: "Archived" },
+              ]}
+              onChange={setStatusFilter}
+            />
+          </FilterField>
+          <FilterField label="Stock">
+            <Dropdown
+              ariaLabel="Filter by stock status"
+              value={stockFilter}
+              options={[
+                { value: "all", label: "Any stock level" },
+                { value: "in", label: "In stock" },
+                { value: "low", label: "Low stock" },
+                { value: "out", label: "Out of stock" },
+              ]}
+              onChange={setStockFilter}
+            />
+          </FilterField>
+          <FilterField label="Min price">
+            <input
+              type="number"
+              min={0}
+              value={priceMin}
+              onChange={(e) => setPriceMin(e.target.value)}
+              placeholder="0"
+              className="h-11 w-24 rounded-xl border border-line bg-void px-3 text-sm text-ink focus:border-accent-cyan focus:outline-none"
+            />
+          </FilterField>
+          <FilterField label="Max price">
+            <input
+              type="number"
+              min={0}
+              value={priceMax}
+              onChange={(e) => setPriceMax(e.target.value)}
+              placeholder="Any"
+              className="h-11 w-24 rounded-xl border border-line bg-void px-3 text-sm text-ink focus:border-accent-cyan focus:outline-none"
+            />
+          </FilterField>
+          {activeFilterCount > 0 && (
+            <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+              <X className="h-3.5 w-3.5" /> Clear filters
+            </Button>
+          )}
+        </div>
+      )}
+
+      {isError && (
+        <div className="mt-6 flex items-center justify-between gap-3 rounded-2xl border border-accent-red/30 bg-accent-red/5 p-6">
+          <p className="text-sm text-ink">Couldn&apos;t load products from the database.</p>
+          <Button variant="outline" size="sm" onClick={loadAdminProducts}>
+            <RotateCcw className="h-3.5 w-3.5" /> Retry
+          </Button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="mt-6 flex flex-col gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-line p-12 text-center text-sm text-ink-faint">
+          {products.length === 0 ? "No products yet — add your first one." : "No products match your search/filters."}
+        </div>
+      ) : (
+        <div className="mt-6 overflow-x-auto rounded-2xl border border-line">
+          <table className="w-full min-w-[1180px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-line bg-surface text-xs uppercase tracking-wider text-ink-faint">
+                <th className="px-4 py-3 font-medium">Product</th>
+                <th className="px-4 py-3 font-medium">SKU / ID</th>
+                <th className="px-4 py-3 font-medium">Category</th>
+                <th className="px-4 py-3 font-medium">Universe</th>
+                <th className="px-4 py-3 font-medium">Price</th>
+                <th className="px-4 py-3 font-medium">Compare-at</th>
+                <th className="px-4 py-3 font-medium">Stock</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Rating</th>
+                <th className="px-4 py-3 font-medium">Created</th>
+                <th className="px-4 py-3 font-medium">Updated</th>
+                <th className="px-4 py-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((p) => {
+                const universe = getUniverse(p.universe);
+                const threshold = p.lowStockThreshold ?? 10;
+                const status = p.status ?? "active";
+                return (
+                  <tr key={p.id} className="border-b border-line/60 last:border-0">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <ProductVisual image={p.image} color={universe.color} icon={p.artIcon} className="h-10 w-10 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-1.5 truncate font-medium text-ink">
+                            {p.featured && <Star className="h-3 w-3 shrink-0 fill-accent-purple text-accent-purple" />}
+                            {p.name}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="flex items-center gap-1.5 text-ink-dim">
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: universe.color }} />
-                      {universe.label}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-ink">{formatPrice(p.price)}</td>
-                  <td className={cn("px-4 py-3 font-mono", p.stock <= 30 && "text-amber-400")}>{p.stock}</td>
-                  <td className="px-4 py-3"><StatusBadge status={status} /></td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1">
-                      <button
-                        onClick={() => openEdit(p)}
-                        aria-label={`Edit ${p.name}`}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint hover:bg-ink/5 hover:text-ink"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => requestDelete(p)}
-                        aria-label={`Delete ${p.name}`}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint hover:bg-ink/5 hover:text-accent-red"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-ink-faint">{p.sku || p.id}</td>
+                    <td className="px-4 py-3 text-ink-dim">{p.category}</td>
+                    <td className="px-4 py-3">
+                      <span className="flex items-center gap-1.5 text-ink-dim">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: universe.color }} />
+                        {universe.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-ink">{formatPrice(p.price)}</td>
+                    <td className="px-4 py-3 font-mono text-ink-faint">{p.compareAtPrice ? formatPrice(p.compareAtPrice) : "—"}</td>
+                    <td className={cn("px-4 py-3 font-mono", p.stock <= threshold && "text-amber-400")}>{p.stock}</td>
+                    <td className="px-4 py-3">
+                      <Dropdown
+                        compact
+                        ariaLabel={`Change status for ${p.name}`}
+                        value={status}
+                        options={[
+                          { value: "active", label: "Active" },
+                          { value: "draft", label: "Draft" },
+                          { value: "archived", label: "Archived" },
+                        ]}
+                        onChange={(next) => handleStatusChange(p, next as NonNullable<Product["status"]>)}
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-ink-dim">
+                      <span className="flex items-center gap-1">
+                        <Star className="h-3 w-3 fill-accent-cyan text-accent-cyan" />
+                        {Number(p.rating || 0).toFixed(1)}
+                        <span className="text-ink-faint">({p.reviewCount ?? 0})</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-ink-faint">
+                      {new Date(p.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-ink-faint">
+                      {p.updatedAt
+                        ? new Date(p.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => openEdit(p)} aria-label={`Edit ${p.name}`} className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint hover:bg-ink/5 hover:text-ink">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleDuplicate(p)} aria-label={`Duplicate ${p.name}`} className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint hover:bg-ink/5 hover:text-ink">
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => requestDelete(p)} aria-label={`Delete ${p.name}`} className="flex h-8 w-8 items-center justify-center rounded-full text-ink-faint hover:bg-ink/5 hover:text-accent-red">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent title="Delete product">
-          <p className="text-sm text-ink-dim">
-            Delete <span className="font-medium text-ink">{deleteTarget?.name}</span>? This can&apos;t be undone.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="border-accent-red text-accent-red hover:bg-accent-red/10"
-              onClick={confirmDelete}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete
-            </Button>
-          </div>
+          {deleteTarget?.orderCount === null ? (
+            <p className="text-sm text-ink-dim">Checking order history…</p>
+          ) : deleteTarget && deleteTarget.orderCount > 0 ? (
+            <>
+              <p className="text-sm text-ink-dim">
+                <span className="font-medium text-ink">{deleteTarget.product.name}</span> appears in{" "}
+                <span className="font-medium text-ink">{deleteTarget.orderCount}</span> order line
+                {deleteTarget.orderCount === 1 ? "" : "s"}. Deleting it would break that order history, so it can&apos;t be
+                permanently deleted. Archive it instead to hide it from the storefront while keeping past orders intact.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setDeleteTarget(null)}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="accent" size="sm" onClick={archiveInsteadOfDelete}>
+                  Archive instead
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-ink-dim">
+                Delete <span className="font-medium text-ink">{deleteTarget?.product.name}</span>? This can&apos;t be undone.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setDeleteTarget(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-accent-red text-accent-red hover:bg-accent-red/10"
+                  onClick={confirmDelete}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
       <Dialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
         <DialogContent title="Reset to default catalog">
           <p className="text-sm text-ink-dim">
-            This replaces all products, universes, and categories with the original seed data. Anything
-            you&apos;ve added or changed will be lost. This can&apos;t be undone.
+            This replaces all products, universes, and categories with the original seed data. Anything you&apos;ve added or
+            changed will be lost. This can&apos;t be undone.
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setResetConfirmOpen(false)}>

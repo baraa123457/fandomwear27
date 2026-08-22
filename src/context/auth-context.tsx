@@ -20,6 +20,7 @@ interface AuthContextValue {
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string, name: string) => Promise<AuthResult>;
+  signInWithOAuth: (provider: "google" | "facebook") => Promise<AuthResult>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<AuthResult>;
   updateProfile: (patch: { name?: string; email?: string }) => Promise<AuthResult>;
@@ -29,10 +30,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
  * Real Supabase Auth, backed by the `profiles` table (see PHASE 4 —
- * AUTHENTICATION). The public shape (user/isLoading/signIn/signOut/
- * updateProfile) is kept close to the old mock so existing consumers barely
- * changed; signIn/signUp are now async and take a real password, and
- * signUp/resetPassword/role are new.
+ * AUTHENTICATION). Supports email/password and OAuth (Google & Facebook).
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -95,16 +93,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       options: { data: { name } },
     });
     if (error) return { error: error.message };
-    // Profile row is created by the on_auth_user_created trigger with an
-    // empty name (it only sees raw_user_meta_data at insert time on some
-    // Supabase configs) — make sure it reflects the name they just typed.
     if (data.user) {
       try {
         await updateProfileRow(supabase, data.user.id, { name });
       } catch {
-        /* non-fatal — profile still exists, just without a name yet */
+        /* non-fatal */
       }
     }
+    return {};
+  }, []);
+
+  const signInWithOAuth = useCallback(async (provider: "google" | "facebook"): Promise<AuthResult> => {
+    const supabase = createClient();
+    const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/account/orders` : undefined;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo,
+      },
+    });
+    if (error) return { error: error.message };
     return {};
   }, []);
 
@@ -146,7 +154,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut, resetPassword, updateProfile }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        signIn,
+        signUp,
+        signInWithOAuth,
+        signOut,
+        resetPassword,
+        updateProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

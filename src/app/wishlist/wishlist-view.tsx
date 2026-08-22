@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Heart, ShoppingBag } from "lucide-react";
+import { Heart, ShoppingBag, Sparkles, ArrowRight } from "lucide-react";
 import { useWishlist } from "@/context/wishlist-context";
 import { useCart } from "@/context/cart-context";
 import { useToast } from "@/context/toast-context";
@@ -43,27 +43,31 @@ export default function WishlistPage() {
 
       <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Wishlist</h1>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Your Saved Wishlist</h1>
           <p className="mt-1.5 text-sm text-ink-faint">
-            {items.length} saved {items.length === 1 ? "item" : "items"} — synced to this browser
+            {items.length} saved {items.length === 1 ? "design" : "designs"} — synced across your browser sessions
           </p>
         </div>
         {items.length > 0 && (
-          <Button onClick={addAllToCart} variant="accent" size="md">
+          <Button onClick={addAllToCart} variant="accent" size="md" className="gap-2">
             <ShoppingBag className="h-4 w-4" /> Add all to cart
           </Button>
         )}
       </div>
 
       {items.length === 0 ? (
-        <div className="mt-10 flex flex-col items-center rounded-2xl border border-dashed border-line py-24 text-center">
-          <Heart className="h-9 w-9 text-ink-faint" />
-          <p className="mt-4 font-display text-lg font-bold text-ink">Nothing saved yet</p>
-          <p className="mt-1.5 max-w-xs text-sm text-ink-faint">
-            Tap the heart on any design to save it here for later.
+        <div className="mt-10 flex flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-surface/30 px-6 py-28 text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent-red/10 text-accent-red shadow-xl">
+            <Heart className="h-10 w-10 fill-accent-red animate-pulse" />
+          </div>
+          <h2 className="mt-6 font-display text-2xl font-bold text-ink">Your wishlist is empty</h2>
+          <p className="mt-2 max-w-sm text-sm text-ink-dim leading-relaxed">
+            Save your favorite pieces here and come back whenever you&apos;re ready to order or compare.
           </p>
-          <Button asChild variant="outline" size="sm" className="mt-5">
-            <Link href="/shop">Browse the shop</Link>
+          <Button asChild variant="accent" size="lg" className="mt-7 gap-2">
+            <Link href="/shop">
+              <Sparkles className="h-4 w-4" /> Browse Collection <ArrowRight className="h-4 w-4" />
+            </Link>
           </Button>
         </div>
       ) : (

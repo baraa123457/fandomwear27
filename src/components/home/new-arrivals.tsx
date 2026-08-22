@@ -30,15 +30,16 @@ export function NewArrivals() {
           </Link>
         </div>
 
-        <div className="mt-10">
+        <div className="mt-8">
           <ScrollRow>
             {items.map((p) => (
-              <div key={p.id} className="w-[220px] shrink-0 snap-start sm:w-[240px]">
+              <div key={p.id} className="w-[230px] shrink-0 snap-start sm:w-[260px] lg:w-[270px]">
                 <ProductCard product={p} />
               </div>
             ))}
           </ScrollRow>
         </div>
+
       </Reveal>
     </section>
   );

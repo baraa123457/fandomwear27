@@ -1,15 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+
+
 import { Product } from "@/lib/types";
 import { useCatalog } from "@/context/catalog-context";
-import { Review, getReviewsForProduct } from "@/lib/data/reviews";
+import { useOrders } from "@/context/orders-context";
+import type { Review } from "@/lib/data/reviews";
 import { createClient } from "@/lib/supabase/client";
+
 import { fetchReviewsForProduct } from "@/lib/supabase/queries/reviews";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { ProductGallery } from "@/components/product/gallery";
 import { PurchasePanel } from "@/components/product/purchase-panel";
 import { Reviews } from "@/components/product/reviews";
+import { WriteReviewDialog } from "@/components/product/write-review-dialog";
 import { RelatedProducts } from "@/components/product/related-products";
 import { RecentlyViewed } from "@/components/product/recently-viewed";
 import { ViewTracker } from "@/components/product/view-tracker";
@@ -31,7 +36,8 @@ export function ProductPageContent({
 }: {
   product: Product;
 }) {
-  const { getUniverse } = useCatalog();
+  const { getUniverse, refreshProducts } = useCatalog();
+  const { orders } = useOrders();
 
   /*
    * Never assume the product's universe exists.
@@ -40,24 +46,37 @@ export function ProductPageContent({
    */
   const universe = getUniverse(product?.universe);
 
-  const [reviews, setReviews] = useState<Review[]>(() =>
-    product
-      ? getReviewsForProduct(product.id, product.rating)
-      : []
-  );
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+
+  // Check if current user has an order containing this product that has been delivered
+  const deliveredPurchase = useMemo(() => {
+    if (!product) return undefined;
+    for (const order of orders) {
+      if (order.status === "delivered") {
+        const item = order.items.find((i) => i.productId === product.id);
+        if (item) {
+          return {
+            size: item.size,
+            author: order.shippingAddress.fullName || order.email || "Verified Buyer",
+          };
+        }
+      }
+    }
+    return undefined;
+  }, [orders, product]);
+
+
 
   useEffect(() => {
     if (!product) return;
 
     let cancelled = false;
 
-    setReviews(
-      getReviewsForProduct(product.id, product.rating)
-    );
-
     (async () => {
       try {
         const supabase = createClient();
+
 
         const rows = await fetchReviewsForProduct(
           supabase,
@@ -268,10 +287,30 @@ export function ProductPageContent({
             <Reviews
               reviews={reviews}
               averageRating={product.rating}
+              onWriteReview={deliveredPurchase ? () => setReviewDialogOpen(true) : undefined}
             />
           </TabsContent>
         </Tabs>
       </div>
+
+      {deliveredPurchase && (
+        <WriteReviewDialog
+          open={reviewDialogOpen}
+          onOpenChange={setReviewDialogOpen}
+          product={{
+            id: product.id,
+            name: product.name,
+            size: deliveredPurchase.size,
+          }}
+          defaultAuthor={deliveredPurchase.author}
+          onReviewSubmitted={async () => {
+            const supabase = createClient();
+            const rows = await fetchReviewsForProduct(supabase, product.id);
+            setReviews(rows);
+            void refreshProducts();
+          }}
+        />
+      )}
 
       <RelatedProducts current={product} />
 

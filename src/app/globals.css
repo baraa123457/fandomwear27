@@ -101,19 +101,26 @@
   .noise-veil {
     background-image: radial-gradient(
         circle at 15% 10%,
-        color-mix(in oklab, var(--color-accent-purple) 18%, transparent),
-        transparent 40%
+        color-mix(in oklab, var(--color-accent-purple) 16%, transparent),
+        transparent 45%
       ),
       radial-gradient(
         circle at 85% 25%,
-        color-mix(in oklab, var(--color-accent-cyan) 14%, transparent),
-        transparent 45%
+        color-mix(in oklab, var(--color-accent-cyan) 12%, transparent),
+        transparent 50%
       );
   }
   .grid-veil {
     background-image:
-      linear-gradient(to right, color-mix(in oklab, white 4%, transparent) 1px, transparent 1px),
-      linear-gradient(to bottom, color-mix(in oklab, white 4%, transparent) 1px, transparent 1px);
-    background-size: 44px 44px;
+      linear-gradient(to right, color-mix(in oklab, var(--color-ink) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--color-ink) 6%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  html.light .grid-veil {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--color-ink) 8%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--color-ink) 8%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
   }
 }
+

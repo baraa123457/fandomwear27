@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -14,6 +14,21 @@ export type Database = {
   }
   public: {
     Tables: {
+      categories: {
+        Row: {
+          created_at: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          name?: string
+        }
+        Relationships: []
+      }
       coupons: {
         Row: {
           active: boolean
@@ -22,6 +37,7 @@ export type Database = {
           expires: string
           id: string
           max_uses: number | null
+          minimum_order: number
           type: Database["public"]["Enums"]["discount_type"]
           updated_at: string
           uses: number
@@ -34,6 +50,7 @@ export type Database = {
           expires: string
           id?: string
           max_uses?: number | null
+          minimum_order?: number
           type: Database["public"]["Enums"]["discount_type"]
           updated_at?: string
           uses?: number
@@ -46,6 +63,7 @@ export type Database = {
           expires?: string
           id?: string
           max_uses?: number | null
+          minimum_order?: number
           type?: Database["public"]["Enums"]["discount_type"]
           updated_at?: string
           uses?: number
@@ -88,6 +106,8 @@ export type Database = {
       }
       homepage_settings: {
         Row: {
+          bestseller_mode: string | null
+          bestseller_product_ids: string[] | null
           hero_product_1: string | null
           hero_product_2: string | null
           hero_product_3: string | null
@@ -95,6 +115,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bestseller_mode?: string | null
+          bestseller_product_ids?: string[] | null
           hero_product_1?: string | null
           hero_product_2?: string | null
           hero_product_3?: string | null
@@ -102,12 +124,15 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bestseller_mode?: string | null
+          bestseller_product_ids?: string[] | null
           hero_product_1?: string | null
           hero_product_2?: string | null
           hero_product_3?: string | null
           id?: number
           updated_at?: string
         }
+
         Relationships: [
           {
             foreignKeyName: "homepage_settings_hero_product_1_fkey"
@@ -260,22 +285,28 @@ export type Database = {
           compare_at_price: number | null
           created_at: string
           description: string
+          featured: boolean
           id: string
           image: string | null
           images: string[]
-          is_active: boolean
+          low_stock_threshold: number
           material: string
           name: string
           price: number
           rating: number
           review_count: number
+          seo_description: string | null
+          seo_title: string | null
           sizes: Database["public"]["Enums"]["product_size"][]
+          sku: string | null
           slug: string
+          status: Database["public"]["Enums"]["product_status"]
           stock: number
           tags: Database["public"]["Enums"]["product_tag"][]
           universe: string
           updated_at: string
           video: string | null
+          cost_per_item: number | null
         }
         Insert: {
           art_icon?: string
@@ -284,22 +315,28 @@ export type Database = {
           compare_at_price?: number | null
           created_at?: string
           description?: string
+          featured?: boolean
           id: string
           image?: string | null
           images?: string[]
-          is_active?: boolean
+          low_stock_threshold?: number
           material?: string
           name: string
           price: number
           rating?: number
           review_count?: number
+          seo_description?: string | null
+          seo_title?: string | null
           sizes?: Database["public"]["Enums"]["product_size"][]
+          sku?: string | null
           slug: string
+          status?: Database["public"]["Enums"]["product_status"]
           stock?: number
           tags?: Database["public"]["Enums"]["product_tag"][]
           universe: string
           updated_at?: string
           video?: string | null
+          cost_per_item?: number | null
         }
         Update: {
           art_icon?: string
@@ -308,23 +345,30 @@ export type Database = {
           compare_at_price?: number | null
           created_at?: string
           description?: string
+          featured?: boolean
           id?: string
           image?: string | null
           images?: string[]
-          is_active?: boolean
+          low_stock_threshold?: number
           material?: string
           name?: string
           price?: number
           rating?: number
           review_count?: number
+          seo_description?: string | null
+          seo_title?: string | null
           sizes?: Database["public"]["Enums"]["product_size"][]
+          sku?: string | null
           slug?: string
+          status?: Database["public"]["Enums"]["product_status"]
           stock?: number
           tags?: Database["public"]["Enums"]["product_tag"][]
           universe?: string
           updated_at?: string
           video?: string | null
+          cost_per_item?: number | null
         }
+
         Relationships: [
           {
             foreignKeyName: "products_universe_fkey"
@@ -408,6 +452,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      store_settings: {
+        Row: {
+          contact_address: string
+          contact_phone: string
+          currency: string
+          id: number
+          payment_card_enabled: boolean
+          payment_cod_enabled: boolean
+          shipping_flat_rate: number
+          shipping_free_threshold: number
+          store_email: string
+          store_name: string
+          tax_rate: number
+          updated_at: string
+        }
+        Insert: {
+          contact_address?: string
+          contact_phone?: string
+          currency?: string
+          id?: number
+          payment_card_enabled?: boolean
+          payment_cod_enabled?: boolean
+          shipping_flat_rate?: number
+          shipping_free_threshold?: number
+          store_email?: string
+          store_name?: string
+          tax_rate?: number
+          updated_at?: string
+        }
+        Update: {
+          contact_address?: string
+          contact_phone?: string
+          currency?: string
+          id?: number
+          payment_card_enabled?: boolean
+          payment_cod_enabled?: boolean
+          shipping_flat_rate?: number
+          shipping_free_threshold?: number
+          store_email?: string
+          store_name?: string
+          tax_rate?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       universes: {
         Row: {
@@ -520,12 +609,30 @@ export type Database = {
         }
       }
       is_admin: { Args: never; Returns: boolean }
+      validate_coupon: {
+        Args: {
+          p_code: string
+          p_subtotal?: number
+        }
+        Returns: {
+          valid: boolean
+          code: string | null
+          type: Database["public"]["Enums"]["discount_type"] | null
+          value: number | null
+          discount_amount: number
+          minimum_order: number | null
+          remaining_uses: number | null
+          expires: string | null
+          message: string
+        }[]
+      }
     }
     Enums: {
       admin_order_status: "processing" | "shipped" | "delivered" | "cancelled"
       discount_type: "percentage" | "fixed"
       product_size: "S" | "M" | "L" | "XL" | "XXL"
       product_tag: "new" | "bestseller" | "sale" | "limited"
+      product_status: "active" | "draft" | "archived"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -657,6 +764,7 @@ export const Constants = {
       discount_type: ["percentage", "fixed"],
       product_size: ["S", "M", "L", "XL", "XXL"],
       product_tag: ["new", "bestseller", "sale", "limited"],
+      product_status: ["active", "draft", "archived"],
     },
   },
 } as const

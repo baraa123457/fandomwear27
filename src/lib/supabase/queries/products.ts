@@ -31,6 +31,14 @@ function rowToProduct(row: ProductRow): Product {
     images: row.images ?? [],
     video: row.video ?? undefined,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    status: row.status,
+    sku: row.sku ?? undefined,
+    lowStockThreshold: row.low_stock_threshold,
+    featured: row.featured,
+    seoTitle: row.seo_title ?? undefined,
+    seoDescription: row.seo_description ?? undefined,
+    costPrice: row.cost_per_item !== null && row.cost_per_item !== undefined ? Number(row.cost_per_item) : undefined,
   };
 }
 
@@ -58,9 +66,16 @@ function productToRow(product: Product): ProductInsert {
     images: product.images ?? (product.image ? [product.image] : []),
     video: product.video ?? null,
     created_at: product.createdAt,
-    is_active: true,
+    status: product.status ?? "active",
+    sku: product.sku ?? null,
+    low_stock_threshold: product.lowStockThreshold ?? 10,
+    featured: product.featured ?? false,
+    seo_title: product.seoTitle ?? null,
+    seo_description: product.seoDescription ?? null,
+    cost_per_item: product.costPrice ?? null,
   };
 }
+
 
 /**
  * Fetch real units-sold-per-product, from the `product_sales_counts` view
@@ -89,15 +104,42 @@ export async function fetchProductSalesCounts(
 }
 
 /**
- * Fetch only active products.
- * Archived products (is_active = false) are hidden from
- * the storefront and normal catalog views.
+ * Fetch only active products. Draft and archived products are hidden from
+ * the storefront and every customer-facing catalog view — this is what
+ * powers the shared `products` list in catalog-context.tsx.
  */
 export async function fetchProducts(client: Client): Promise<Product[]> {
   const { data, error } = await client
     .from("products")
     .select("*")
-    .eq("is_active", true)
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    if (error.code === "PGRST204" || error.message?.includes("status") || error.message?.includes("schema cache")) {
+      const fallback = await client
+        .from("products")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (fallback.error) throw fallback.error;
+      return (fallback.data ?? []).map(rowToProduct);
+    }
+    throw error;
+  }
+
+  return (data ?? []).map(rowToProduct);
+}
+
+
+/**
+ * Fetch every product regardless of status, for the admin Products page —
+ * an admin needs to see and manage drafts and archived products too, not
+ * just what's currently live on the storefront.
+ */
+export async function fetchAllProductsAdmin(client: Client): Promise<Product[]> {
+  const { data, error } = await client
+    .from("products")
+    .select("*")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -105,17 +147,70 @@ export async function fetchProducts(client: Client): Promise<Product[]> {
   return (data ?? []).map(rowToProduct);
 }
 
+/**
+ * How many order_items rows reference this product. Used to decide
+ * whether a hard delete is safe (see deleteProductRow's caller in the
+ * admin Products page) — a product with real order history should be
+ * archived, not deleted, or the delete will fail the DB's foreign key
+ * constraint (order_items.product_id references products(id), no
+ * cascade) anyway.
+ */
+export async function countProductOrderItems(client: Client, id: string): Promise<number> {
+  const { count, error } = await client
+    .from("order_items")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", id);
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function insertProduct(
   client: Client,
   product: Product
 ): Promise<Product> {
+  const row = productToRow(product);
   const { data, error } = await client
     .from("products")
-    .insert(productToRow(product))
+    .insert(row)
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // If the remote Supabase schema hasn't run migration 018 yet or has PGRST204 schema cache error:
+    if (error.code === "PGRST204" || error.message?.includes("schema cache") || error.message?.includes("featured")) {
+      const baseRow = {
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        universe: row.universe,
+        category: row.category,
+        price: row.price,
+        compare_at_price: row.compare_at_price,
+        description: row.description,
+        material: row.material,
+        sizes: row.sizes,
+        colors: row.colors,
+        rating: row.rating,
+        review_count: row.review_count,
+        stock: row.stock,
+        tags: row.tags,
+        art_icon: row.art_icon,
+        image: row.image,
+        created_at: row.created_at,
+      };
+
+      const fallback = await client
+        .from("products")
+        .insert(baseRow as Database["public"]["Tables"]["products"]["Insert"])
+        .select()
+        .single();
+
+      if (fallback.error) throw fallback.error;
+      return rowToProduct(fallback.data);
+    }
+    throw error;
+  }
 
   return rowToProduct(data);
 }
@@ -187,6 +282,34 @@ export async function updateProductRow(
     rowPatch.video = patch.video ?? null;
   }
 
+  if (patch.status !== undefined) {
+    rowPatch.status = patch.status;
+  }
+
+  if (patch.sku !== undefined) {
+    rowPatch.sku = patch.sku ?? null;
+  }
+
+  if (patch.lowStockThreshold !== undefined) {
+    rowPatch.low_stock_threshold = patch.lowStockThreshold;
+  }
+
+  if (patch.featured !== undefined) {
+    rowPatch.featured = patch.featured;
+  }
+
+  if (patch.seoTitle !== undefined) {
+    rowPatch.seo_title = patch.seoTitle ?? null;
+  }
+
+  if (patch.seoDescription !== undefined) {
+    rowPatch.seo_description = patch.seoDescription ?? null;
+  }
+
+  if (patch.costPrice !== undefined) {
+    rowPatch.cost_per_item = patch.costPrice ?? null;
+  }
+
   const { data, error } = await client
     .from("products")
     .update(rowPatch)
@@ -194,15 +317,48 @@ export async function updateProductRow(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === "PGRST204" || error.message?.includes("schema cache") || error.message?.includes("featured") || error.message?.includes("cost_per_item")) {
+      const sanitized = { ...rowPatch };
+      delete sanitized.status;
+      delete sanitized.sku;
+      delete sanitized.low_stock_threshold;
+      delete sanitized.featured;
+      delete sanitized.seo_title;
+      delete sanitized.seo_description;
+      delete sanitized.images;
+      delete sanitized.video;
+      delete sanitized.cost_per_item;
+
+      const fallback = await client
+        .from("products")
+        .update(sanitized)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (fallback.error) throw fallback.error;
+      return rowToProduct(fallback.data);
+    }
+    throw error;
+  }
+
 
   return rowToProduct(data);
 }
 
+
 /**
  * Permanently delete a product.
- * This should only be used for products that are not referenced
- * by existing order_items.
+ *
+ * This should only be used for products that are not referenced by
+ * existing order_items — callers should check countProductOrderItems()
+ * first and offer Archive instead when it's > 0. The DB itself also
+ * enforces this (order_items.product_id references products(id) with no
+ * cascade), so a delete against a referenced product fails with a
+ * Postgres foreign-key-violation error (code 23503) rather than silently
+ * orphaning order history; that error is re-thrown as-is for the caller
+ * to handle as a defense-in-depth fallback.
  */
 export async function deleteProductRow(
   client: Client,
@@ -218,7 +374,8 @@ export async function deleteProductRow(
 
 /**
  * Archive a product instead of permanently deleting it.
- * This keeps existing orders and order_items intact.
+ * This keeps existing orders and order_items intact, and hides the
+ * product from the storefront (fetchProducts only returns status='active').
  */
 export async function archiveProductRow(
   client: Client,
@@ -226,14 +383,14 @@ export async function archiveProductRow(
 ): Promise<void> {
   const { error } = await client
     .from("products")
-    .update({ is_active: false })
+    .update({ status: "archived" })
     .eq("id", id);
 
   if (error) throw error;
 }
 
 /**
- * Restore an archived product.
+ * Restore an archived (or draft) product back to active.
  */
 export async function restoreProductRow(
   client: Client,
@@ -241,7 +398,7 @@ export async function restoreProductRow(
 ): Promise<void> {
   const { error } = await client
     .from("products")
-    .update({ is_active: true })
+    .update({ status: "active" })
     .eq("id", id);
 
   if (error) throw error;

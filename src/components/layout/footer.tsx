@@ -11,25 +11,20 @@ const columns = [
       { label: "All products", href: "/shop" },
       { label: "New arrivals", href: "/shop?sort=new" },
       { label: "Best sellers", href: "/shop?sort=best" },
-      { label: "Sale", href: "/shop?tag=sale" },
     ],
   },
   {
-    title: "Help",
+    title: "Orders & Support",
     links: [
-      { label: "Size guide", href: "/help/size-guide" },
-      { label: "Shipping & returns", href: "/help/shipping" },
       { label: "Track order", href: "/account/orders" },
       { label: "Contact us", href: "/help/contact" },
     ],
   },
   {
-    title: "Company",
+    title: "About Us",
     links: [
       { label: "About FandomWear", href: "/about" },
-      { label: "Sustainability", href: "/about/sustainability" },
-      { label: "Careers", href: "/about/careers" },
-      { label: "Press", href: "/about/press" },
+      { label: "Our Story & Quality", href: "/about#story" },
     ],
   },
 ];
@@ -82,12 +77,12 @@ export function Footer() {
             </div>
           ))}
 
-          <div className="col-span-2 md:col-span-2">
+          <div className="col-span-2 md:col-span-1">
             <h4 className="font-display text-xs font-bold uppercase tracking-wider text-ink">
               Universes
             </h4>
-            <ul className="mt-4 flex flex-wrap gap-x-3 gap-y-2">
-              {universes.map((u) => (
+            <ul className="mt-4 flex flex-col space-y-2">
+              {universes.slice(0, 5).map((u) => (
                 <li key={u.id}>
                   <Link
                     href={`/shop?universe=${u.id}`}
@@ -101,15 +96,15 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-line pt-8 sm:flex-row">
-          <p className="text-xs text-ink-faint">
-            © {new Date().getFullYear()} FandomWear. All designs are original,
-            fan-inspired works. Not affiliated with or endorsed by any studio or publisher.
-          </p>
-          <div className="flex items-center gap-4 text-xs text-ink-faint">
-            <Link href="/legal/privacy" className="hover:text-ink">Privacy</Link>
-            <Link href="/legal/terms" className="hover:text-ink">Terms</Link>
-            <span className="font-mono tracking-wider">VISA · MC · PAYPAL · APPLE PAY</span>
+        <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-line pt-8 text-xs text-ink-faint sm:flex-row">
+          <p>© {new Date().getFullYear()} FandomWear. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <Link href="/about" className="hover:text-ink transition-colors">
+              About Us
+            </Link>
+            <Link href="/help/contact" className="hover:text-ink transition-colors">
+              Support
+            </Link>
           </div>
         </div>
       </div>

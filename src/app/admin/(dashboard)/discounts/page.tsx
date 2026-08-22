@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { Dropdown } from "@/components/shared/dropdown";
 import { useToast } from "@/context/toast-context";
-import { cn } from "@/lib/utils";
+import { cn, formatPrice } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import {
   fetchAdminCoupons,
@@ -17,10 +17,22 @@ import {
   type AdminCoupon,
 } from "@/lib/supabase/queries/coupons";
 
-const emptyDraft: { code: string; type: "percentage" | "fixed"; value: number; maxUses: number; expires: string } = {
+interface DiscountDraft {
+  code: string;
+  type: "percentage" | "fixed";
+  value: number;
+  minimumOrder: number;
+  hasUsageLimit: boolean;
+  maxUses: number;
+  expires: string;
+}
+
+const emptyDraft: DiscountDraft = {
   code: "",
   type: "percentage",
   value: 10,
+  minimumOrder: 0,
+  hasUsageLimit: true,
   maxUses: 100,
   expires: "",
 };
@@ -30,7 +42,7 @@ export default function AdminDiscountsPage() {
   const [codes, setCodes] = useState<AdminCoupon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [draft, setDraft] = useState(emptyDraft);
+  const [draft, setDraft] = useState<DiscountDraft>(emptyDraft);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -61,7 +73,8 @@ export default function AdminDiscountsPage() {
         code: draft.code.toUpperCase(),
         type: draft.type,
         value: draft.value,
-        maxUses: draft.maxUses,
+        maxUses: draft.hasUsageLimit ? draft.maxUses : null,
+        minimumOrder: draft.minimumOrder,
         expires: draft.expires || "2026-12-31",
       });
       setCodes((prev) => [created, ...prev]);
@@ -83,13 +96,23 @@ export default function AdminDiscountsPage() {
     const target = codes.find((c) => c.id === id);
     if (!target) return;
     const nextActive = !target.active;
-    setCodes((prev) => prev.map((c) => (c.id === id ? { ...c, active: nextActive } : c)));
+    setCodes((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? { ...c, active: nextActive, status: nextActive ? "active" : "inactive" }
+          : c
+      )
+    );
     try {
       const supabase = createClient();
       await setCouponActive(supabase, id, nextActive);
     } catch (err) {
       console.error("[admin] Failed to update discount code:", err);
-      setCodes((prev) => prev.map((c) => (c.id === id ? { ...c, active: !nextActive } : c)));
+      setCodes((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, active: !nextActive, status: !nextActive ? "active" : "inactive" } : c
+        )
+      );
       toast({ variant: "error", title: "Couldn't update discount code" });
     }
   };
@@ -149,28 +172,50 @@ export default function AdminDiscountsPage() {
                   />
                 </label>
                 <label>
-                  <span className="text-xs font-medium text-ink-dim">Value</span>
+                  <span className="text-xs font-medium text-ink-dim">
+                    Value {draft.type === "percentage" ? "(%)" : "($)"}
+                  </span>
                   <input
                     required
                     type="number"
                     min={0}
+                    step={draft.type === "percentage" ? 1 : 0.01}
                     value={draft.value}
                     onChange={(e) => setDraft((d) => ({ ...d, value: Number(e.target.value) }))}
                     className="mt-1.5 h-11 w-full rounded-xl border border-line bg-void px-4 text-sm text-ink focus:border-accent-cyan focus:outline-none"
                   />
                 </label>
               </div>
+              <label>
+                <span className="text-xs font-medium text-ink-dim">Minimum order ($)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={draft.minimumOrder}
+                  onChange={(e) => setDraft((d) => ({ ...d, minimumOrder: Number(e.target.value) }))}
+                  className="mt-1.5 h-11 w-full rounded-xl border border-line bg-void px-4 text-sm text-ink focus:border-accent-cyan focus:outline-none"
+                />
+              </label>
               <div className="grid grid-cols-2 gap-3.5">
                 <label>
-                  <span className="text-xs font-medium text-ink-dim">Max uses</span>
-                  <input
-                    required
-                    type="number"
-                    min={1}
-                    value={draft.maxUses}
-                    onChange={(e) => setDraft((d) => ({ ...d, maxUses: Number(e.target.value) }))}
-                    className="mt-1.5 h-11 w-full rounded-xl border border-line bg-void px-4 text-sm text-ink focus:border-accent-cyan focus:outline-none"
-                  />
+                  <span className="text-xs font-medium text-ink-dim">Usage limit</span>
+                  <div className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border border-line bg-void px-4">
+                    <input
+                      type="checkbox"
+                      checked={draft.hasUsageLimit}
+                      onChange={(e) => setDraft((d) => ({ ...d, hasUsageLimit: e.target.checked }))}
+                      className="h-4 w-4 accent-accent-cyan"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      disabled={!draft.hasUsageLimit}
+                      value={draft.maxUses}
+                      onChange={(e) => setDraft((d) => ({ ...d, maxUses: Number(e.target.value) }))}
+                      className="w-full bg-transparent text-sm text-ink focus:outline-none disabled:text-ink-faint"
+                    />
+                  </div>
                 </label>
                 <label>
                   <span className="text-xs font-medium text-ink-dim">Expires</span>
@@ -191,12 +236,14 @@ export default function AdminDiscountsPage() {
       </div>
 
       <div className="mt-6 overflow-x-auto rounded-2xl border border-line">
-        <table className="w-full min-w-[680px] text-left text-sm">
+        <table className="w-full min-w-[820px] text-left text-sm">
           <thead>
             <tr className="border-b border-line bg-surface text-xs uppercase tracking-wider text-ink-faint">
               <th className="px-4 py-3 font-medium">Code</th>
               <th className="px-4 py-3 font-medium">Discount</th>
+              <th className="px-4 py-3 font-medium">Min. order</th>
               <th className="px-4 py-3 font-medium">Usage</th>
+              <th className="px-4 py-3 font-medium">Remaining</th>
               <th className="px-4 py-3 font-medium">Expires</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium text-right">Actions</th>
@@ -207,7 +254,10 @@ export default function AdminDiscountsPage() {
               <tr key={c.id} className="border-b border-line/60 last:border-0">
                 <td className="px-4 py-3 font-mono font-semibold text-ink">{c.code}</td>
                 <td className="px-4 py-3 text-ink-dim">
-                  {c.type === "percentage" ? `${c.value}%` : `$${c.value.toFixed(2)}`} off
+                  {c.type === "percentage" ? `${c.value}%` : formatPrice(c.value)} off
+                </td>
+                <td className="px-4 py-3 text-ink-dim">
+                  {c.minimumOrder > 0 ? formatPrice(c.minimumOrder) : "None"}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -229,11 +279,14 @@ export default function AdminDiscountsPage() {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-ink-dim">
+                  {c.remainingUses === null ? "Unlimited" : c.remainingUses}
+                </td>
+                <td className="px-4 py-3 text-ink-dim">
                   {new Date(c.expires).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </td>
                 <td className="px-4 py-3">
-                  <button onClick={() => toggleActive(c.id)}>
-                    <StatusBadge status={c.active ? "active" : "inactive"} />
+                  <button onClick={() => toggleActive(c.id)} disabled={c.status === "expired" || c.status === "exhausted"}>
+                    <StatusBadge status={c.status} />
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right">

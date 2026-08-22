@@ -130,6 +130,57 @@ export async function fetchAllOrdersAdmin(
   );
 }
 
+/** A single order (with items), for the admin order-details page. */
+export async function fetchOrderByIdAdmin(
+  client: Client,
+  id: string
+): Promise<OrderWithItems | null> {
+  const { data, error } = await client
+    .from("orders")
+    .select("*, order_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[orders] Failed to fetch admin order:", {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+
+    throw error;
+  }
+
+  if (!data) return null;
+  return rowToOrder(data, data.order_items ?? []);
+}
+
+/** Every order placed under a given email, for the admin customer-details page. */
+export async function fetchOrdersByEmailAdmin(
+  client: Client,
+  email: string
+): Promise<OrderWithItems[]> {
+  const { data, error } = await client
+    .from("orders")
+    .select("*, order_items(*)")
+    .eq("email", email)
+    .order("order_date", { ascending: false });
+
+  if (error) {
+    console.error("[orders] Failed to fetch orders for email:", {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
+
+    throw error;
+  }
+
+  return (data ?? []).map((row) => rowToOrder(row, row.order_items ?? []));
+}
+
 export async function updateOrderStatusAdmin(
   client: Client,
   id: string,

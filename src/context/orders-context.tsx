@@ -6,6 +6,7 @@ import { useAuth } from "@/context/auth-context";
 import { useCatalog } from "@/context/catalog-context";
 import { createClient } from "@/lib/supabase/client";
 import { createOrder as createOrderRpc, fetchOrdersForUser } from "@/lib/supabase/queries/orders";
+import { updateProductRow } from "@/lib/supabase/queries/products";
 
 const GUEST_STORAGE_KEY = "fandomwear:guest-orders";
 
@@ -69,7 +70,7 @@ const OrdersContext = createContext<OrdersContextValue | null>(null);
  */
 export function OrdersProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const { refreshSalesCounts, refreshProducts } = useCatalog();
+  const { products, refreshSalesCounts, refreshProducts, deductStock } = useCatalog();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const userRef = useRef(user);
@@ -156,6 +157,20 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
 
+    // Deduct stock in memory immediately so storefront & inventory update synchronously
+    deductStock(input.items.map((line) => ({ productId: line.productId, quantity: line.quantity })));
+
+    // In addition to Postgres create_order logic, ensure Supabase products table stock column is updated directly
+    for (const line of input.items) {
+      const p = products.find((x) => x.id === line.productId);
+      if (p) {
+        const newStock = Math.max(0, p.stock - line.quantity);
+        void updateProductRow(supabase, line.productId, { stock: newStock }).catch((err) => {
+          console.warn("[orders] Direct stock update error:", err);
+        });
+      }
+    }
+
     // The order is now committed server-side (order_items were written by
     // create_order(), which also atomically decremented product stock —
     // see migration 20260816000016), so both sales data and inventory
@@ -166,7 +181,7 @@ export function OrdersProvider({ children }: { children: React.ReactNode }) {
     void refreshProducts();
 
     return order;
-  }, [refreshSalesCounts, refreshProducts]);
+  }, [products, refreshSalesCounts, refreshProducts, deductStock]);
 
   return (
     <OrdersContext.Provider value={{ orders, isLoading, placeOrder }}>{children}</OrdersContext.Provider>

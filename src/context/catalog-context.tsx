@@ -32,40 +32,19 @@ import {
   upsertProducts,
 } from "@/lib/supabase/queries/products";
 
+import {
+  fetchCategories,
+  insertCategory,
+  deleteCategory,
+} from "@/lib/supabase/queries/categories";
+
 import { deleteProductMediaMany } from "@/lib/supabase/storage/product-media";
 
-const CATEGORIES_KEY = "fandomwear:catalog-categories";
-
-function clearStorage(key: string) {
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    /* storage unavailable */
-  }
-}
-
+// Seed categories: used ONLY as a cold-start fallback when Supabase is
+// unreachable. Never used to override a successful Supabase response.
 const seedCategories = Array.from(
   new Set(seedProducts.map((p) => p.category))
 );
-
-function loadFromStorage<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveToStorage<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* storage unavailable */
-  }
-}
 
 interface CatalogContextValue {
   products: Product[];
@@ -106,6 +85,11 @@ interface CatalogContextValue {
    *  requiring a full page reload or any polling. */
   refreshSalesCounts: () => Promise<void>;
 
+  /** Deduct product stock in memory immediately upon purchase */
+  deductStock: (items: { productId: string; quantity: number }[]) => void;
+  /** Restore product stock in memory upon order cancellation */
+  restoreStock: (items: { productId: string; quantity: number }[]) => void;
+
   /**
    * Re-fetches products (including `stock`) from Supabase. Call after an
    * order is placed or cancelled/reinstated, so every stock display
@@ -114,6 +98,7 @@ interface CatalogContextValue {
    */
   refreshProducts: () => Promise<void>;
 }
+
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
 
@@ -164,17 +149,42 @@ export function CatalogProvider({
     universesRef.current = universes;
   }, [universes]);
 
+
   /*
-   * Categories are still stored locally for now.
+   * Load categories from Supabase (migration 20260822000020).
+   *
+   * Falls back to seed categories if Supabase is unreachable so the
+   * shop filter panel never renders empty. An empty Supabase result IS
+   * valid (admin deleted everything) — we only use the seed when the
+   * query itself fails (network error, auth error, etc.).
    */
 
   useEffect(() => {
-    setCategories(
-      loadFromStorage(
-        CATEGORIES_KEY,
-        seedCategories
-      )
-    );
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const supabase = createClient();
+        const rows = await fetchCategories(supabase);
+
+        if (!cancelled) {
+          setCategories(rows.length > 0 ? rows : seedCategories);
+        }
+      } catch (err) {
+        console.warn(
+          "[catalog] Supabase categories fetch failed. Using seed categories as fallback:",
+          err
+        );
+
+        if (!cancelled) {
+          setCategories(seedCategories);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /*
@@ -564,38 +574,28 @@ export function CatalogProvider({
 
   const addCategory = useCallback(
     (category: string) => {
-      const normalized =
-        category.trim();
-
+      const normalized = category.trim();
       if (!normalized) return;
 
+      // Optimistic update — prevent duplicates client-side.
       setCategories((prev) => {
-        /*
-         * Prevent duplicates.
-         */
-
-        if (
-          prev.some(
-            (c) =>
-              c.toLowerCase() ===
-              normalized.toLowerCase()
-          )
-        ) {
+        if (prev.some((c) => c.toLowerCase() === normalized.toLowerCase())) {
           return prev;
         }
-
-        const next = [
-          ...prev,
-          normalized,
-        ];
-
-        saveToStorage(
-          CATEGORIES_KEY,
-          next
-        );
-
-        return next;
+        return [...prev, normalized].sort();
       });
+
+      // Persist to Supabase (admin-only, RLS enforced).
+      (async () => {
+        try {
+          const supabase = createClient();
+          await insertCategory(supabase, normalized);
+        } catch (err) {
+          console.error("[catalog] Failed to save category to Supabase. Rolling back:", err);
+          // Roll back the optimistic add.
+          setCategories((prev) => prev.filter((c) => c !== normalized));
+        }
+      })();
     },
     []
   );
@@ -606,18 +606,24 @@ export function CatalogProvider({
 
   const removeCategory = useCallback(
     (category: string) => {
+      const previousCategories = [...([] as string[])];
+
+      // Optimistic delete.
       setCategories((prev) => {
-        const next = prev.filter(
-          (c) => c !== category
-        );
-
-        saveToStorage(
-          CATEGORIES_KEY,
-          next
-        );
-
-        return next;
+        previousCategories.push(...prev);
+        return prev.filter((c) => c !== category);
       });
+
+      // Persist to Supabase (admin-only, RLS enforced).
+      (async () => {
+        try {
+          const supabase = createClient();
+          await deleteCategory(supabase, category);
+        } catch (err) {
+          console.error("[catalog] Failed to delete category from Supabase. Rolling back:", err);
+          setCategories(previousCategories);
+        }
+      })();
     },
     []
   );
@@ -689,22 +695,13 @@ export function CatalogProvider({
   /*
    * RESET TO SEED
    *
-   * This function now means:
-   *
-   * - reset categories to local seed categories
-   * - re-fetch products from Supabase
-   * - re-fetch universes from Supabase
-   *
+   * Re-fetches products and universes from Supabase. Categories are now
+   * stored in Supabase (migration 20260822000020) and are not reset here —
+   * the admin manages them explicitly via the Content Management page.
    * It DOES NOT recreate deleted Supabase universes.
    */
 
   const resetToSeed = useCallback(() => {
-    clearStorage(CATEGORIES_KEY);
-
-    setCategories(
-      seedCategories
-    );
-
     (async () => {
       try {
         const supabase =
@@ -835,19 +832,48 @@ export function CatalogProvider({
 
   /*
    * FEATURED
+   *
+   * Manually curated by the admin (Products page "Featured" toggle,
+   * migration 20260816000018), not derived from rating. A product with
+   * `featured` unset (only possible from the seed fallback array) is
+   * treated as not featured — if nothing has been marked yet, this
+   * returns an empty array rather than fabricating a ranking.
    */
 
   const getFeatured =
     useCallback(
       (limit = 8) =>
-        [...products]
-          .sort(
-            (a, b) =>
-              b.rating - a.rating
-          )
+        products
+          .filter((product) => product.featured === true)
           .slice(0, limit),
       [products]
     );
+
+  const deductStock = useCallback((items: { productId: string; quantity: number }[]) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        const item = items.find((i) => i.productId === p.id);
+        if (!item) return p;
+        return {
+          ...p,
+          stock: Math.max(0, p.stock - item.quantity),
+        };
+      })
+    );
+  }, []);
+
+  const restoreStock = useCallback((items: { productId: string; quantity: number }[]) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        const item = items.find((i) => i.productId === p.id);
+        if (!item) return p;
+        return {
+          ...p,
+          stock: p.stock + item.quantity,
+        };
+      })
+    );
+  }, []);
 
   /*
    * CONTEXT VALUE
@@ -863,6 +889,8 @@ export function CatalogProvider({
         addProduct,
         updateProduct,
         deleteProduct,
+        deductStock,
+        restoreStock,
 
         addUniverse,
         removeUniverse,
@@ -912,6 +940,8 @@ export function CatalogProvider({
         salesCounts,
         loadSalesCounts,
         loadProducts,
+        deductStock,
+        restoreStock,
       ]
     );
 

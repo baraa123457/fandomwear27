@@ -7,11 +7,12 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
 } from "react";
 import type { Product, Size } from "@/lib/types";
 import { computeDiscount, DiscountCode } from "@/lib/data/coupons";
 import { createClient } from "@/lib/supabase/client";
-import { fetchCoupon } from "@/lib/supabase/queries/coupons";
+import { validateCouponRpc } from "@/lib/supabase/queries/coupons";
 
 export interface CartLine {
   productId: string;
@@ -98,7 +99,7 @@ interface CartContextValue {
   addItem: (line: Omit<CartLine, "quantity">, quantity?: number) => void;
   removeItem: (productId: string, size: Size, color: string) => void;
   setQuantity: (productId: string, size: Size, color: string, quantity: number) => void;
-  applyCoupon: (code: string) => Promise<boolean>;
+  applyCoupon: (code: string) => Promise<{ ok: boolean; message: string }>;
   removeCoupon: () => void;
   clearCart: () => void;
   open: () => void;
@@ -109,6 +110,8 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { lines: [], isOpen: false, coupon: null });
+  const linesRef = useRef(state.lines);
+  linesRef.current = state.lines;
 
   useEffect(() => {
     try {
@@ -144,8 +147,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
   const open = useCallback(() => dispatch({ type: "OPEN" }), []);
   const close = useCallback(() => dispatch({ type: "CLOSE" }), []);
-  // Coupons now live in Supabase (see PHASE 4). This is a UX preview only —
-  // create_order() re-validates and re-applies the coupon server-side at
+  // Coupons live in Supabase and eligibility is decided entirely by the
+  // validate_coupon() Postgres function (exists/active/not expired/under
+  // its usage cap/subtotal meets minimum_order) — this is a UX preview
+  // only, never a second implementation of those rules. create_order()
+  // independently re-validates and re-applies the coupon server-side at
   // checkout, so it stays the actual source of truth even if this lookup
   // fails (network error, RLS misconfig, etc). On failure we simply refuse
   // the code rather than falling back to the removed static list, since
@@ -153,13 +159,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const applyCoupon = useCallback(async (code: string) => {
     try {
       const supabase = createClient();
-      const match = await fetchCoupon(supabase, code);
-      dispatch({ type: "SET_COUPON", coupon: match });
-      return Boolean(match);
+      const currentSubtotal = linesRef.current.reduce((sum, l) => sum + l.price * l.quantity, 0);
+      const result = await validateCouponRpc(supabase, code, currentSubtotal);
+      dispatch({ type: "SET_COUPON", coupon: result.coupon });
+      return { ok: result.valid, message: result.message };
     } catch (err) {
       console.error("[cart] Coupon lookup failed:", err);
       dispatch({ type: "SET_COUPON", coupon: null });
-      return false;
+      return { ok: false, message: "Couldn't check that code — try again" };
     }
   }, []);
   const removeCoupon = useCallback(() => dispatch({ type: "SET_COUPON", coupon: null }), []);

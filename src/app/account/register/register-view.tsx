@@ -7,6 +7,7 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/context/toast-context";
 import { Button } from "@/components/ui/button";
 import { AuthShell, AuthField } from "@/components/account/auth-shell";
+import { SocialAuthButtons } from "@/components/account/social-auth-buttons";
 
 export default function RegisterPage() {
   const { signUp } = useAuth();
@@ -47,40 +48,44 @@ export default function RegisterPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <AuthField
-          label="Full name"
-          required
-          value={form.name}
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-        />
-        <AuthField
-          label="Email"
-          type="email"
-          required
-          value={form.email}
-          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-        />
-        <AuthField
-          label="Password"
-          type="password"
-          required
-          minLength={6}
-          value={form.password}
-          onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-        />
-        <AuthField
-          label="Confirm password"
-          type="password"
-          required
-          value={form.confirm}
-          onChange={(e) => setForm((f) => ({ ...f, confirm: e.target.value }))}
-        />
-        {error && <p className="text-xs text-accent-red">{error}</p>}
-        <Button type="submit" size="lg" variant="accent" className="mt-2 w-full" disabled={submitting}>
-          {submitting ? "Creating account…" : "Create account"}
-        </Button>
-      </form>
+      <div className="flex flex-col gap-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <AuthField
+            label="Full name"
+            required
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          />
+          <AuthField
+            label="Email"
+            type="email"
+            required
+            value={form.email}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          />
+          <AuthField
+            label="Password"
+            type="password"
+            required
+            minLength={6}
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+          />
+          <AuthField
+            label="Confirm password"
+            type="password"
+            required
+            value={form.confirm}
+            onChange={(e) => setForm((f) => ({ ...f, confirm: e.target.value }))}
+          />
+          {error && <p className="text-xs text-accent-red">{error}</p>}
+          <Button type="submit" size="lg" variant="accent" className="mt-2 w-full" disabled={submitting}>
+            {submitting ? "Creating account…" : "Create account"}
+          </Button>
+        </form>
+
+        <SocialAuthButtons action="Sign up" />
+      </div>
     </AuthShell>
   );
 }

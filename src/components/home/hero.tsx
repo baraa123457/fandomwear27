@@ -5,14 +5,15 @@ import Link from "next/link";
 import { motion, useScroll, useTransform, useReducedMotion } from "framer-motion";
 import { ArrowRight, Compass } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { TeeArt } from "@/components/shared/tee-art";
+import { ProductVisual } from "@/components/shared/product-visual";
 import { useCatalog } from "@/context/catalog-context";
 import { useHomepageSettings } from "@/context/homepage-settings-context";
 import type { Product } from "@/lib/types";
 
 export function Hero() {
-  const { products, getUniverse } = useCatalog();
+  const { products, universes, getUniverse } = useCatalog();
   const { heroProductIds } = useHomepageSettings();
+
 
   // Resolve the admin's 3 picks, in order (hero_product_1/2/3), from the
   // real catalog — NOT from Best Sellers and NOT from fixed array
@@ -23,7 +24,7 @@ export function Hero() {
   const heroTees = useMemo(() => {
     const byId = new Map(products.map((p) => [p.id, p]));
     const used = new Set<string>();
-    const fallbackPool = [...products];
+    const fallbackPool = [...products].sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
 
     const nextFallback = (): Product | undefined => {
       while (fallbackPool.length > 0) {
@@ -33,15 +34,25 @@ export function Hero() {
       return undefined;
     };
 
-    return heroProductIds
-      .map((id) => {
-        const picked = id ? byId.get(id) : undefined;
-        const resolved = picked ?? nextFallback();
-        if (resolved) used.add(resolved.id);
-        return resolved;
-      })
-      .filter((p): p is Product => Boolean(p));
+    const resolved: Product[] = [];
+    for (const id of heroProductIds) {
+      if (id && byId.has(id) && !used.has(id)) {
+        const p = byId.get(id)!;
+        resolved.push(p);
+        used.add(p.id);
+      }
+    }
+
+    while (resolved.length < 3) {
+      const fb = nextFallback();
+      if (!fb) break;
+      resolved.push(fb);
+      used.add(fb.id);
+    }
+
+    return resolved;
   }, [products, heroProductIds]);
+
 
   const sectionRef = useRef<HTMLElement>(null);
   const prefersReducedMotion = useReducedMotion();
@@ -54,6 +65,22 @@ export function Hero() {
   // drift faster, so the hero gains depth as the page scrolls past it.
   const bgY = useTransform(scrollYProgress, [0, 1], prefersReducedMotion ? [0, 0] : [0, 60]);
   const teesY = useTransform(scrollYProgress, [0, 1], prefersReducedMotion ? [0, 0] : [0, 140]);
+
+  const ratedProducts = useMemo(() => products.filter((p) => (p.reviewCount ?? 0) > 0 || p.rating > 0), [products]);
+  const avgRating = useMemo(() => {
+    if (ratedProducts.length === 0) return "5.0";
+    const sum = ratedProducts.reduce((acc, p) => acc + p.rating, 0);
+    return (sum / ratedProducts.length).toFixed(1);
+  }, [ratedProducts]);
+
+  const heroStats = useMemo(
+    () => [
+      [`${products.length}${products.length >= 10 ? "+" : ""}`, "Designs"],
+      [avgRating, "Avg. rating"],
+      [String(universes.length), "Universes"],
+    ],
+    [products.length, avgRating, universes.length]
+  );
 
   return (
     <section ref={sectionRef} className="relative overflow-hidden border-b border-line noise-veil">
@@ -70,7 +97,7 @@ export function Hero() {
         >
           <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-medium text-ink-dim">
             <span className="h-1.5 w-1.5 rounded-full bg-accent-cyan animate-glow-pulse" />
-            30+ original designs · 7 universes
+            {products.length} original designs · {universes.length} universes
           </span>
 
           <h1 className="mt-6 text-balance font-display text-5xl font-extrabold leading-[1.02] tracking-tight text-ink sm:text-6xl lg:text-[4.2rem]">
@@ -100,11 +127,7 @@ export function Hero() {
           </div>
 
           <div className="mt-12 flex items-center gap-8">
-            {[
-              ["30+", "Designs"],
-              ["4.7", "Avg. rating"],
-              ["7", "Universes"],
-            ].map(([stat, label]) => (
+            {heroStats.map(([stat, label]) => (
               <div key={label}>
                 <p className="font-display text-2xl font-bold text-ink">{stat}</p>
                 <p className="text-xs text-ink-faint">{label}</p>
@@ -112,6 +135,7 @@ export function Hero() {
             ))}
           </div>
         </motion.div>
+
 
         <motion.div
           style={{ y: teesY }}
@@ -139,14 +163,22 @@ export function Hero() {
                   delay: i * 0.4,
                 }}
               >
-                <TeeArt
-                  color={universe.color}
-                  icon={p.artIcon}
-                  label={p.name}
-                  variant="hero"
-                  className="h-full w-full border border-line/80 shadow-2xl"
-                />
+                <Link
+                  href={`/product/${p.slug}`}
+                  aria-label={`View ${p.name}`}
+                  className="group block h-full w-full rounded-3xl transition-transform duration-300 hover:scale-105 cursor-pointer"
+                >
+                  <ProductVisual
+                    image={p.image}
+                    color={universe.color}
+                    icon={p.artIcon}
+                    label={p.name}
+                    variant="hero"
+                    className="h-full w-full border border-line/80 shadow-2xl transition-all duration-300 group-hover:border-accent-cyan/60 group-hover:shadow-accent-cyan/10"
+                  />
+                </Link>
               </motion.div>
+
             );
           })}
         </motion.div>

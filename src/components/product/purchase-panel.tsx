@@ -250,12 +250,42 @@ export function PurchasePanel({ product }: { product: Product }) {
       <div className="flex flex-col gap-2.5 rounded-2xl border border-line bg-surface p-4 text-xs text-ink-dim">
         <div className="flex items-center gap-2.5">
           <Truck className="h-4 w-4 shrink-0 text-ink-faint" />
-          Free shipping on orders over EGP 75 · delivered in 3–6 business days
+          Fast delivery in Egypt (2–4 business days) · Free over 1,000 EGP
         </div>
 
         <div className="flex items-center gap-2.5">
           <ShieldCheck className="h-4 w-4 shrink-0 text-ink-faint" />
-          30-day returns, no questions asked
+          7-day easy returns & exchanges guaranteed
+        </div>
+      </div>
+
+      {/* Social Sharing */}
+      <div className="flex items-center justify-between border-t border-line/60 pt-4 text-xs">
+        <span className="text-ink-faint font-medium">Share this design:</span>
+        <div className="flex items-center gap-2">
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(
+              `Check out the ${product.name} on FandomWear: ${typeof window !== "undefined" ? window.location.href : ""}`
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-ink-dim hover:border-emerald-500 hover:text-emerald-400 transition-colors"
+          >
+            WhatsApp
+          </a>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                navigator.clipboard.writeText(window.location.href);
+                toast({ variant: "success", title: "Link copied to clipboard!" });
+              }
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-ink-dim hover:border-accent-cyan hover:text-accent-cyan transition-colors"
+          >
+            Copy Link
+          </button>
         </div>
       </div>
     </div>

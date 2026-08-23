@@ -48,8 +48,12 @@ export function ProductPageContent({
 
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [selectedColor, setSelectedColor] = useState(
+    product.colors?.[0]?.name ?? "Black"
+  );
 
   // Check if current user has an order containing this product that has been delivered
+
   const deliveredPurchase = useMemo(() => {
     if (!product) return undefined;
     for (const order of orders) {
@@ -168,6 +172,7 @@ export function ProductPageContent({
         <ProductGallery
           product={product}
           color={universe.color}
+          selectedColor={selectedColor}
         />
 
         <div>
@@ -183,10 +188,15 @@ export function ProductPageContent({
           </h1>
 
           <div className="mt-6">
-            <PurchasePanel product={product} />
+            <PurchasePanel
+              product={product}
+              selectedColor={selectedColor}
+              onColorChange={setSelectedColor}
+            />
           </div>
         </div>
       </div>
+
 
       <div className="mt-16">
         <Tabs defaultValue="description">

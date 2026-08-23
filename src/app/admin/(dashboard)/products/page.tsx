@@ -15,8 +15,11 @@ import {
   Trash2,
   Upload,
   X,
+  Layers,
+  Sparkles,
+  Check,
 } from "lucide-react";
-import { Product, Size, UniverseInfo } from "@/lib/types";
+import { Product, ProductVariant, Size, UniverseInfo } from "@/lib/types";
 import { useCatalog } from "@/context/catalog-context";
 import { Dialog, DialogTrigger, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -36,6 +39,7 @@ import {
 } from "@/lib/supabase/queries/products";
 import {
   uploadProductImage,
+  uploadProductColorImage,
   uploadProductVideo,
   deleteProductMediaMany,
 } from "@/lib/supabase/storage/product-media";
@@ -106,6 +110,33 @@ type MediaSlot =
 
 type ImageSlots = [MediaSlot, MediaSlot, MediaSlot];
 
+function generateVariants(
+  colors: Product["colors"],
+  sizes: Size[],
+  existing: ProductVariant[] = [],
+  baseSku = "",
+  defaultStock = 10
+): ProductVariant[] {
+  const result: ProductVariant[] = [];
+  for (const color of colors) {
+    for (const size of sizes) {
+      const match = existing.find((v) => v.color === color.name && v.size === size);
+      if (match) {
+        result.push(match);
+      } else {
+        const sku = baseSku ? `${baseSku}-${slugify(color.name)}-${size}`.toUpperCase() : undefined;
+        result.push({
+          color: color.name,
+          size,
+          stock: defaultStock,
+          sku,
+        });
+      }
+    }
+  }
+  return result;
+}
+
 interface Draft {
   name: string;
   description: string;
@@ -121,6 +152,8 @@ interface Draft {
   sizes: Size[];
   colors: Product["colors"];
   images: ImageSlots;
+  colorImages: Record<string, [MediaSlot, MediaSlot, MediaSlot]>;
+  variants: ProductVariant[];
   video: MediaSlot;
   featured: boolean;
   status: NonNullable<Product["status"]>;
@@ -144,6 +177,8 @@ const emptyDraft: Draft = {
   lowStockThreshold: 10,
   tags: [],
   images: [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }],
+  colorImages: {},
+  variants: [],
   video: { kind: "empty" },
   sizes: [...ALL_SIZES],
   colors: [],
@@ -153,6 +188,7 @@ const emptyDraft: Draft = {
   seoTitle: "",
   seoDescription: "",
 };
+
 
 
 function slotPreviewSrc(slot: MediaSlot): string | undefined {
@@ -249,7 +285,9 @@ export default function AdminProductsPage() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [customColorHex, setCustomColorHex] = useState("#7C5CFF");
+  const [bulkStockInput, setBulkStockInput] = useState("20");
   const imageInputRefs = [
+
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
     useRef<HTMLInputElement>(null),
@@ -363,7 +401,24 @@ export default function AdminProductsPage() {
       return;
     }
     setEditingId(null);
-    setDraft({ ...emptyDraft, universe: universeOptions[0].id });
+    const initialColors = PREDEFINED_COLORS.slice(0, 2);
+    const initialSizes = [...ALL_SIZES];
+    const initialVariants = generateVariants(initialColors, initialSizes, [], "", 20);
+    const initialColorImages: Record<string, [MediaSlot, MediaSlot, MediaSlot]> = {};
+    initialColors.forEach((c) => {
+      initialColorImages[c.name] = [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }];
+    });
+
+    setDraft({
+      ...emptyDraft,
+      universe: universeOptions[0].id,
+      category: categoryOptions[0] ?? "Oversized Tee",
+      colors: initialColors,
+      sizes: initialSizes,
+      variants: initialVariants,
+      colorImages: initialColorImages,
+      stock: initialVariants.reduce((s, v) => s + (v.stock || 0), 0),
+    });
     setSlugTouched(false);
     setCustomColorHex("#7C5CFF");
     setDialogOpen(true);
@@ -375,6 +430,25 @@ export default function AdminProductsPage() {
     const slots: ImageSlots = [0, 1, 2].map((i): MediaSlot =>
       existingImages[i] ? { kind: "existing", url: existingImages[i] } : { kind: "empty" }
     ) as ImageSlots;
+
+    const colorImagesDraft: Record<string, [MediaSlot, MediaSlot, MediaSlot]> = {};
+    (p.colors ?? []).forEach((c) => {
+      const cSlots: [MediaSlot, MediaSlot, MediaSlot] = [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }];
+      const existingUrls = p.colorImages?.[c.name] ?? [];
+      existingUrls.slice(0, 3).forEach((url, idx) => {
+        cSlots[idx] = { kind: "existing", url };
+      });
+      colorImagesDraft[c.name] = cSlots;
+    });
+
+    const defaultVariantStock = Math.max(
+      1,
+      Math.floor((p.stock || 0) / Math.max(1, (p.colors?.length || 1) * (p.sizes?.length || 1)))
+    );
+    const variants = p.variants && p.variants.length > 0
+      ? p.variants
+      : generateVariants(p.colors ?? [], p.sizes ?? [], [], p.sku || p.slug, defaultVariantStock);
+
     setDraft({
       name: p.name,
       description: p.description ?? "",
@@ -385,10 +459,12 @@ export default function AdminProductsPage() {
       compareAtPrice: p.compareAtPrice != null ? String(p.compareAtPrice) : "",
       costPrice: p.costPrice != null ? String(p.costPrice) : "",
       sku: p.sku ?? "",
-      stock: p.stock,
+      stock: variants.reduce((s, v) => s + (Number(v.stock) || 0), 0) || p.stock,
       lowStockThreshold: p.lowStockThreshold ?? 10,
       tags: p.tags ?? [],
       images: slots,
+      colorImages: colorImagesDraft,
+      variants,
       video: p.video ? { kind: "existing", url: p.video } : { kind: "empty" },
       sizes: p.sizes,
       colors: p.colors ?? [],
@@ -411,7 +487,10 @@ export default function AdminProductsPage() {
         toast({ variant: "error", title: "At least one size is required" });
         return d;
       }
-      return { ...d, sizes: has ? d.sizes.filter((s) => s !== size) : [...d.sizes, size] };
+      const newSizes = has ? d.sizes.filter((s) => s !== size) : [...d.sizes, size];
+      const newVariants = generateVariants(d.colors, newSizes, d.variants, d.sku || d.slug);
+      const totalStock = newVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+      return { ...d, sizes: newSizes, variants: newVariants, stock: totalStock };
     });
   };
 
@@ -428,12 +507,46 @@ export default function AdminProductsPage() {
         toast({ variant: "error", title: "That color is already added" });
         return d;
       }
-      return { ...d, colors: [...d.colors, { name, hex }] };
+      const newColors = [...d.colors, { name, hex }];
+      const newVariants = generateVariants(newColors, d.sizes, d.variants, d.sku || d.slug);
+      const totalStock = newVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+      const newColorImages = {
+        ...d.colorImages,
+        [name]: d.colorImages[name] ?? [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }],
+      };
+      return { ...d, colors: newColors, variants: newVariants, stock: totalStock, colorImages: newColorImages };
     });
   };
 
   const removeColor = (hex: string) => {
-    setDraft((d) => ({ ...d, colors: d.colors.filter((c) => c.hex.toUpperCase() !== hex.toUpperCase()) }));
+    setDraft((d) => {
+      const target = d.colors.find((c) => c.hex.toUpperCase() === hex.toUpperCase());
+      const newColors = d.colors.filter((c) => c.hex.toUpperCase() !== hex.toUpperCase());
+      const newVariants = generateVariants(newColors, d.sizes, d.variants, d.sku || d.slug);
+      const totalStock = newVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+      const newColorImages = { ...d.colorImages };
+      if (target) delete newColorImages[target.name];
+      return { ...d, colors: newColors, variants: newVariants, stock: totalStock, colorImages: newColorImages };
+    });
+  };
+
+  const updateVariantStock = (color: string, size: Size, stock: number) => {
+    setDraft((d) => {
+      const newVariants = d.variants.map((v) =>
+        v.color === color && v.size === size ? { ...v, stock: Math.max(0, stock) } : v
+      );
+      const totalStock = newVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+      return { ...d, variants: newVariants, stock: totalStock };
+    });
+  };
+
+  const applyStockToAllVariants = (stock: number) => {
+    setDraft((d) => {
+      const validStock = Math.max(0, stock);
+      const newVariants = d.variants.map((v) => ({ ...v, stock: validStock }));
+      const totalStock = newVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+      return { ...d, variants: newVariants, stock: totalStock };
+    });
   };
 
   const handleAddCustomColor = () => {
@@ -478,6 +591,52 @@ export default function AdminProductsPage() {
     });
   };
 
+  const handleColorImageChange = (colorName: string, slotIndex: 0 | 1 | 2) => (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({ variant: "error", title: "That's not an image file" });
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast({ variant: "error", title: "Image too large", description: "Max 4MB." });
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setDraft((d) => {
+      const currentSlots = d.colorImages[colorName] ?? [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }];
+      const prevSlot = currentSlots[slotIndex];
+      if (prevSlot?.kind === "new") URL.revokeObjectURL(prevSlot.previewUrl);
+      const updatedSlots = [...currentSlots] as [MediaSlot, MediaSlot, MediaSlot];
+      updatedSlots[slotIndex] = { kind: "new", file, previewUrl };
+      return {
+        ...d,
+        colorImages: {
+          ...d.colorImages,
+          [colorName]: updatedSlots,
+        },
+      };
+    });
+  };
+
+  const removeColorImage = (colorName: string, slotIndex: 0 | 1 | 2) => {
+    setDraft((d) => {
+      const currentSlots = d.colorImages[colorName] ?? [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }];
+      const prevSlot = currentSlots[slotIndex];
+      if (prevSlot?.kind === "new") URL.revokeObjectURL(prevSlot.previewUrl);
+      const updatedSlots = [...currentSlots] as [MediaSlot, MediaSlot, MediaSlot];
+      updatedSlots[slotIndex] = { kind: "empty" };
+      return {
+        ...d,
+        colorImages: {
+          ...d.colorImages,
+          [colorName]: updatedSlots,
+        },
+      };
+    });
+  };
+
   const handleVideoChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -509,9 +668,15 @@ export default function AdminProductsPage() {
     draft.images.forEach((slot) => {
       if (slot.kind === "new") URL.revokeObjectURL(slot.previewUrl);
     });
+    Object.values(draft.colorImages).forEach((slots) => {
+      slots.forEach((slot) => {
+        if (slot.kind === "new") URL.revokeObjectURL(slot.previewUrl);
+      });
+    });
     if (draft.video.kind === "new") URL.revokeObjectURL(draft.video.previewUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen]);
+
 
   /* ---------------------------------------------------------------- */
   /* CRUD — direct Supabase calls (this page owns the all-statuses     */
@@ -595,6 +760,34 @@ export default function AdminProductsPage() {
         }
       }
 
+      // Upload color-specific photos for each color variant
+      const finalColorImages: Record<string, string[]> = {};
+      for (const color of draft.colors) {
+        const slots = draft.colorImages[color.name] ?? [];
+        const colorUrls: string[] = [];
+        for (let i = 0; i < slots.length; i++) {
+          const slot = slots[i];
+          if (slot?.kind === "new") {
+            const url = await uploadProductColorImage(supabase, productId, color.name, i, slot.file);
+            uploadedThisAttempt.push(url);
+            colorUrls.push(url);
+          } else if (slot?.kind === "existing") {
+            colorUrls.push(slot.url);
+          }
+        }
+        if (colorUrls.length > 0) {
+          finalColorImages[color.name] = colorUrls;
+        }
+      }
+
+      // If no general product photos were uploaded, use the first color's photos as main photos
+      if (finalImages.length === 0) {
+        const firstColorName = draft.colors[0]?.name;
+        if (firstColorName && finalColorImages[firstColorName]?.length > 0) {
+          finalImages.push(...finalColorImages[firstColorName]);
+        }
+      }
+
       let finalVideo: string | null = null;
       if (draft.video.kind === "new") {
         finalVideo = await uploadProductVideo(supabase, productId, draft.video.file);
@@ -634,12 +827,15 @@ export default function AdminProductsPage() {
         colors: draft.colors,
         images: finalImages,
         image: finalImages[0],
+        colorImages: finalColorImages,
+        variants: draft.variants,
         video: finalVideo,
         featured: draft.featured,
         status: draft.status,
         seoTitle: draft.seoTitle.trim() || undefined,
         seoDescription: draft.seoDescription.trim() || undefined,
       };
+
 
 
       if (editingId) {
@@ -1094,7 +1290,8 @@ export default function AdminProductsPage() {
                   </div>
                 </FormSection>
 
-                <FormSection title="Variants">
+                <FormSection title="Variants & Inventory">
+
                   <div>
                     <span className="text-xs font-medium text-ink-dim">Sizes available to customers</span>
                     <div className="mt-1.5 flex flex-wrap gap-2">
@@ -1174,7 +1371,7 @@ export default function AdminProductsPage() {
                             className="flex items-center gap-2 rounded-full border border-line bg-surface py-1 pl-1.5 pr-2.5 font-mono text-xs text-ink-dim"
                           >
                             <span className="h-5 w-5 rounded-full border border-line/60" style={{ backgroundColor: color.hex }} />
-                            {color.hex}
+                            {color.name}
                             <button
                               type="button"
                               onClick={() => removeColor(color.hex)}
@@ -1189,13 +1386,178 @@ export default function AdminProductsPage() {
                     )}
                     <p className="mt-1.5 text-[11px] text-ink-faint">At least one color is required.</p>
                   </div>
+
+                  {/* Shopify-Style Variants & Stock Matrix Table */}
+                  {draft.variants.length > 0 && (
+                    <div className="mt-2 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-semibold text-ink flex items-center gap-1.5">
+                            <Layers className="h-4 w-4 text-accent-purple" />
+                            Shopify Variants Inventory Matrix ({draft.variants.length} combinations)
+                          </span>
+                          <p className="text-[11px] text-ink-faint mt-0.5">
+                            Set stock quantities per color and size combination. Total stock will be calculated automatically.
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-accent-cyan/40 bg-accent-cyan/10 px-3 py-1 font-mono text-xs font-bold text-accent-cyan">
+                          Total Stock: {draft.stock} units
+                        </span>
+                      </div>
+
+                      {/* Quick Bulk Edit Bar */}
+                      <div className="flex items-center gap-2 rounded-xl border border-line bg-surface/70 p-2.5">
+                        <span className="text-xs font-medium text-ink-dim">Set stock for all:</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={bulkStockInput}
+                          onChange={(e) => setBulkStockInput(e.target.value)}
+                          className="h-8 w-20 rounded-lg border border-line bg-void px-2 text-center font-mono text-xs text-ink focus:border-accent-cyan focus:outline-none"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => applyStockToAllVariants(Number(bulkStockInput) || 0)}
+                        >
+                          <Check className="h-3.5 w-3.5" /> Apply to all variants
+                        </Button>
+                      </div>
+
+                      {/* Matrix Table */}
+                      <div className="max-h-64 overflow-y-auto rounded-xl border border-line bg-void shadow-inner">
+                        <table className="w-full text-left text-xs">
+                          <thead className="sticky top-0 z-10 border-b border-line bg-surface font-semibold text-ink-dim">
+                            <tr>
+                              <th className="px-3.5 py-2.5">Variant</th>
+                              <th className="px-3.5 py-2.5">SKU</th>
+                              <th className="px-3.5 py-2.5 text-right w-36">Stock (Units)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-line/40">
+                            {draft.variants.map((v) => {
+                              const colorObj = draft.colors.find((c) => c.name === v.color);
+                              return (
+                                <tr key={`${v.color}-${v.size}`} className="hover:bg-surface/50 transition-colors">
+                                  <td className="px-3.5 py-2.5">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="h-3.5 w-3.5 rounded-full border border-line/60 shrink-0"
+                                        style={{ backgroundColor: colorObj?.hex || "#ffffff" }}
+                                      />
+                                      <span className="font-medium text-ink">{v.color}</span>
+                                      <span className="rounded-md border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] font-bold text-ink-dim">
+                                        {v.size}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3.5 py-2.5 font-mono text-[11px] text-ink-faint">
+                                    {v.sku || `${slugify(draft.name || "item")}-${slugify(v.color)}-${v.size}`.toUpperCase()}
+                                  </td>
+                                  <td className="px-3.5 py-2.5 text-right">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={v.stock}
+                                      onChange={(e) => updateVariantStock(v.color, v.size, Number(e.target.value))}
+                                      className="h-8 w-24 rounded-lg border border-line bg-surface px-2 text-center font-mono text-xs font-semibold text-ink focus:border-accent-cyan focus:outline-none"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </FormSection>
 
-                <FormSection title="Media">
+                <FormSection title="Media & Color Galleries">
+                  {/* Color-specific Photos (Shopify Style) */}
+                  {draft.colors.length > 0 && (
+                    <div className="rounded-2xl border border-accent-purple/30 bg-accent-purple/5 p-4">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-accent-purple" />
+                        <span className="text-xs font-bold text-ink">Photos per color (Shopify style)</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-ink-faint">
+                        Upload specific photos for each color. When a shopper clicks on that color, the gallery will switch to these photos.
+                      </p>
+
+                      <div className="mt-3 space-y-4">
+                        {draft.colors.map((color) => {
+                          const slots = draft.colorImages[color.name] ?? [
+                            { kind: "empty" },
+                            { kind: "empty" },
+                            { kind: "empty" },
+                          ];
+                          return (
+                            <div key={color.hex} className="rounded-xl border border-line bg-surface p-3.5 shadow-sm">
+                              <div className="flex items-center gap-2 mb-2.5">
+                                <span
+                                  className="h-4 w-4 rounded-full border border-line/60 shrink-0"
+                                  style={{ backgroundColor: color.hex }}
+                                />
+                                <span className="text-xs font-bold text-ink">{color.name} Gallery</span>
+                                <span className="font-mono text-[10px] text-ink-faint">({color.hex})</span>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-3">
+                                {([0, 1, 2] as const).map((idx) => {
+                                  const slot = slots[idx];
+                                  const slotSrc = slot ? slotPreviewSrc(slot) : undefined;
+                                  return (
+                                    <div key={idx} className="flex flex-col gap-1.5">
+                                      <span className="text-[10px] font-medium text-ink-faint">
+                                        {color.name} Photo {idx + 1}
+                                      </span>
+                                      <div className="relative aspect-square w-full rounded-xl border border-line bg-void overflow-hidden flex items-center justify-center">
+                                        {slotSrc ? (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img
+                                            src={slotSrc}
+                                            alt={`${color.name} ${idx + 1}`}
+                                            className="h-full w-full object-cover"
+                                          />
+                                        ) : (
+                                          <span className="text-[10px] text-ink-faint font-mono">Empty</span>
+                                        )}
+                                      </div>
+                                      <label className="cursor-pointer inline-flex items-center justify-center rounded-lg border border-line bg-void px-2 py-1 text-[11px] font-medium text-ink hover:border-ink-faint transition-colors text-center">
+                                        <Upload className="h-3 w-3 mr-1" /> {slot?.kind !== "empty" ? "Replace" : "Upload"}
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={handleColorImageChange(color.name, idx)}
+                                          className="hidden"
+                                        />
+                                      </label>
+                                      {slot?.kind !== "empty" && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removeColorImage(color.name, idx)}
+                                          className="text-[10px] text-ink-faint hover:text-accent-red transition-colors flex items-center justify-center gap-1 py-0.5"
+                                        >
+                                          <X className="h-2.5 w-2.5" /> Remove
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
-                    <span className="text-xs font-medium text-ink-dim">Product images</span>
+                    <span className="text-xs font-medium text-ink-dim">General product images</span>
                     <p className="mt-1 text-[11px] text-ink-faint">
-                      Up to 3 photos, in display order. Image 1 is the main/front photo used across the storefront.
+                      General/fallback photos for this product. Image 1 is the main storefront thumbnail.
                     </p>
                     <div className="mt-1.5 grid grid-cols-3 gap-3">
                       {([0, 1, 2] as const).map((index) => {

@@ -29,6 +29,8 @@ function rowToProduct(row: ProductRow): Product {
     artIcon: row.art_icon,
     image: row.image ?? undefined,
     images: row.images ?? [],
+    colorImages: ((row as Record<string, unknown>).color_images as Record<string, string[]>) ?? undefined,
+    variants: ((row as Record<string, unknown>).variants as Product["variants"]) ?? undefined,
     video: row.video ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -64,6 +66,8 @@ function productToRow(product: Product): ProductInsert {
     // components that only read the single legacy field.
     image: product.images?.[0] ?? product.image ?? null,
     images: product.images ?? (product.image ? [product.image] : []),
+    color_images: product.colorImages ?? {},
+    variants: product.variants ?? [],
     video: product.video ?? null,
     created_at: product.createdAt,
     status: product.status ?? "active",
@@ -73,8 +77,9 @@ function productToRow(product: Product): ProductInsert {
     seo_title: product.seoTitle ?? null,
     seo_description: product.seoDescription ?? null,
     cost_per_item: product.costPrice ?? null,
-  };
+  } as ProductInsert & { color_images?: Record<string, string[]>; variants?: Product["variants"] };
 }
+
 
 
 /**

@@ -78,6 +78,21 @@ export async function uploadProductImage(
   return uploadToProductMedia(client, path, file);
 }
 
+/** Uploads a photo specific to a color variant (e.g. Red, Black). */
+export async function uploadProductColorImage(
+  client: Client,
+  productId: string,
+  colorName: string,
+  index: number,
+  file: File
+): Promise<string> {
+  const ext = fileExtension(file.name, "jpg");
+  const cleanColor = colorName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const path = `products/${productId}/color-${cleanColor}-${index + 1}-${uniqueSuffix()}.${ext}`;
+  return uploadToProductMedia(client, path, file);
+}
+
+
 /** Uploads the (single, optional) product video. */
 export async function uploadProductVideo(
   client: Client,

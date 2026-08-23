@@ -13,6 +13,15 @@ export interface UniverseInfo {
 
 export type Size = "S" | "M" | "L" | "XL" | "XXL";
 
+export interface ProductVariant {
+  id?: string;
+  size: Size;
+  color: string;
+  stock: number;
+  sku?: string;
+  price?: number;
+}
+
 export interface Product {
   id: string;
   slug: string;
@@ -39,6 +48,10 @@ export interface Product {
    *  [main/front, second, third]. `images[0]` is always mirrored to
    *  `image`. */
   images?: string[];
+  /** Dedicated photos per color variant, mapping color name to array of image URLs e.g. { "Red": ["url1", "url2"] } */
+  colorImages?: Record<string, string[]>;
+  /** Specific variant combinations (Color x Size) with individual stock and optional SKU/price */
+  variants?: ProductVariant[];
   /** Optional single product video (data URL or storage URL). Never
    *  required. */
   video?: string | null;
@@ -63,4 +76,5 @@ export interface Product {
   /** Cost of goods sold (COGS) / cost price per unit in EGP */
   costPrice?: number;
 }
+
 

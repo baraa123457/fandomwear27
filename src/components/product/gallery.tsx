@@ -223,19 +223,43 @@ function ProductVideoPlayer({ src, poster }: { src: string; poster?: string }) {
   );
 }
 
-export function ProductGallery({ product, color }: { product: Product; color: string }) {
+export function ProductGallery({
+  product,
+  color,
+  selectedColor,
+}: {
+  product: Product;
+  color: string;
+  selectedColor?: string;
+}) {
   const [active, setActive] = useState(0);
   const [zoom, setZoom] = useState(false);
   const [origin, setOrigin] = useState("50% 50%");
   const [spinning, setSpinning] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
 
+  // Switch to the first photo whenever customer selects a different color
+  useEffect(() => {
+    setActive(0);
+  }, [selectedColor]);
+
   const photos = useMemo(() => {
+    // 1. If color-specific gallery exists for this color, show those photos
+    if (
+      selectedColor &&
+      product.colorImages &&
+      Array.isArray(product.colorImages[selectedColor]) &&
+      product.colorImages[selectedColor].length > 0
+    ) {
+      return product.colorImages[selectedColor].filter(Boolean);
+    }
+    // 2. Fall back to general product images
     if (Array.isArray(product.images) && product.images.length > 0) {
       return product.images.filter(Boolean).slice(0, 3);
     }
     return product.image ? [product.image] : [];
-  }, [product.images, product.image]);
+  }, [product.images, product.image, product.colorImages, selectedColor]);
+
 
   const media: MediaItem[] = useMemo(() => {
     const items: MediaItem[] = photos.map((src, i) => ({

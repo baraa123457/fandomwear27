@@ -10,16 +10,33 @@ import { Button } from "@/components/ui/button";
 import { SizeGuideDialog } from "@/components/product/size-guide-dialog";
 import { formatPrice, cn } from "@/lib/utils";
 
-export function PurchasePanel({ product }: { product: Product }) {
+export function PurchasePanel({
+  product,
+  selectedColor,
+  onColorChange,
+}: {
+  product: Product;
+  selectedColor?: string;
+  onColorChange?: (color: string) => void;
+}) {
   const colors = product.colors ?? [];
   const sizes = product.sizes ?? [];
 
+  const [internalColor, setInternalColor] = useState(
+    colors[0]?.name ?? "Black"
+  );
+  const color = selectedColor ?? internalColor;
+
+  const handleColorSelect = (colorName: string) => {
+    if (onColorChange) {
+      onColorChange(colorName);
+    } else {
+      setInternalColor(colorName);
+    }
+  };
+
   const [size, setSize] = useState<Size>(
     sizes[Math.floor(sizes.length / 2)] ?? "M"
-  );
-
-  const [color, setColor] = useState(
-    colors[0]?.name ?? "Black"
   );
 
   const [qty, setQty] = useState(1);
@@ -30,8 +47,18 @@ export function PurchasePanel({ product }: { product: Product }) {
 
   const isWishlisted = has(product.id);
 
-  const lowStock = product.stock > 0 && product.stock <= 15;
-  const outOfStock = product.stock === 0;
+  // Variant lookup
+  const currentVariant = product.variants?.find(
+    (v) => v.color === color && v.size === size
+  );
+  const currentStock =
+    currentVariant !== undefined ? currentVariant.stock : product.stock;
+  const lowStock = currentStock > 0 && currentStock <= 10;
+  const outOfStock = currentStock === 0;
+
+  // Active color image for cart
+  const activeColorImage =
+    product.colorImages?.[color]?.[0] ?? product.images?.[0] ?? product.image;
 
   const handleAdd = () => {
     if (outOfStock) return;
@@ -46,11 +73,10 @@ export function PurchasePanel({ product }: { product: Product }) {
         color,
         universe: product.universe,
         artIcon: product.artIcon,
-        image: product.image,
+        image: activeColorImage,
       },
       qty
     );
-
 
     open();
 
@@ -60,6 +86,7 @@ export function PurchasePanel({ product }: { product: Product }) {
       description: `${product.name} · ${size} · ${color}`,
     });
   };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -106,13 +133,13 @@ export function PurchasePanel({ product }: { product: Product }) {
               <button
                 key={c.name}
                 type="button"
-                onClick={() => setColor(c.name)}
+                onClick={() => handleColorSelect(c.name)}
                 aria-label={c.name}
                 aria-pressed={color === c.name}
                 className={cn(
                   "h-9 w-9 rounded-full border-2 transition-transform hover:scale-110",
                   color === c.name
-                    ? "border-accent-cyan"
+                    ? "border-accent-cyan ring-2 ring-accent-cyan/30"
                     : "border-line"
                 )}
                 style={{ backgroundColor: c.hex }}
@@ -138,21 +165,35 @@ export function PurchasePanel({ product }: { product: Product }) {
 
         {sizes.length > 0 ? (
           <div className="mt-2.5 flex flex-wrap gap-2">
-            {sizes.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSize(s)}
-                className={cn(
-                  "h-11 w-14 rounded-xl border text-sm font-semibold transition-colors",
-                  size === s
-                    ? "border-ink bg-ink text-void"
-                    : "border-line text-ink-dim hover:border-ink hover:text-ink"
-                )}
-              >
-                {s}
-              </button>
-            ))}
+            {sizes.map((s) => {
+              const v = product.variants?.find(
+                (item) => item.color === color && item.size === s
+              );
+              const sStock = v !== undefined ? v.stock : product.stock;
+              const isSizeOutOfStock = sStock === 0;
+
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSize(s)}
+                  className={cn(
+                    "relative h-11 w-14 rounded-xl border text-sm font-semibold transition-colors",
+                    size === s
+                      ? "border-ink bg-ink text-void"
+                      : "border-line text-ink-dim hover:border-ink hover:text-ink",
+                    isSizeOutOfStock &&
+                      "opacity-45 line-through cursor-not-allowed border-dashed bg-void/50 text-ink-faint"
+                  )}
+                  title={isSizeOutOfStock ? `${s} is out of stock in ${color}` : undefined}
+                >
+                  {s}
+                  {isSizeOutOfStock && (
+                    <span className="sr-only"> (Out of stock)</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         ) : (
           <p className="mt-2 text-sm text-ink-faint">
@@ -160,6 +201,18 @@ export function PurchasePanel({ product }: { product: Product }) {
           </p>
         )}
       </div>
+
+      {/* Low stock & Out of stock warnings */}
+      {lowStock && !outOfStock && (
+        <p className="font-mono text-xs font-semibold text-accent-yellow">
+          ⚡ Only {currentStock} left in stock for {color} / {size} — order soon
+        </p>
+      )}
+      {outOfStock && (
+        <p className="font-mono text-xs font-semibold text-accent-red">
+          ❌ Out of stock in {color} ({size})
+        </p>
+      )}
 
       {/* Quantity + Add to cart */}
       <div className="flex items-center gap-3">
@@ -181,7 +234,7 @@ export function PurchasePanel({ product }: { product: Product }) {
             type="button"
             aria-label="Increase quantity"
             onClick={() =>
-              setQty((q) => Math.min(product.stock, q + 1))
+              setQty((q) => Math.min(Math.max(1, currentStock), q + 1))
             }
             className="flex h-11 w-11 items-center justify-center text-ink-dim hover:text-ink"
           >
@@ -198,6 +251,7 @@ export function PurchasePanel({ product }: { product: Product }) {
         >
           {outOfStock ? "Out of stock" : "Add to cart"}
         </Button>
+
 
         <Button
           onClick={() => {

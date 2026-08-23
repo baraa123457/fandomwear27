@@ -23,8 +23,10 @@ export interface CartLine {
   color: string;
   universe: Product["universe"];
   artIcon: string;
+  image?: string;
   quantity: number;
 }
+
 
 interface CartState {
   lines: CartLine[];

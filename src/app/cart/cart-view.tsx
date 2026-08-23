@@ -6,8 +6,9 @@ import { useState, useMemo } from "react";
 
 import { useCart } from "@/context/cart-context";
 import { useCatalog } from "@/context/catalog-context";
-import { TeeArt } from "@/components/shared/tee-art";
+import { ProductVisual } from "@/components/shared/product-visual";
 import { Button } from "@/components/ui/button";
+
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { formatPrice } from "@/lib/utils";
 import { useToast } from "@/context/toast-context";
@@ -30,7 +31,8 @@ export default function CartPage() {
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
   const { toast } = useToast();
-  const { getUniverse, products } = useCatalog();
+  const { getUniverse, getProductBySlug, products } = useCatalog();
+
 
   const trendingSuggestions = useMemo(() => {
     return products.slice(0, 4);
@@ -119,15 +121,19 @@ export default function CartPage() {
             <ul className="divide-y divide-line">
               {lines.map((line) => {
                 const universe = getUniverse(line.universe)!;
+                const product = getProductBySlug(line.slug);
+                const image = line.image ?? product?.image;
                 return (
                   <li key={`${line.productId}-${line.size}-${line.color}`} className="flex gap-4 p-5">
-                    <TeeArt
+                    <ProductVisual
+                      image={image}
                       color={universe.color}
                       icon={line.artIcon}
                       label={line.name}
                       className="h-28 w-22 shrink-0"
                     />
                     <div className="flex flex-1 flex-col">
+
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="text-xs font-medium uppercase tracking-wider" style={{ color: universe.color }}>

@@ -7,8 +7,9 @@ import { Minus, Plus, ShoppingBag, Tag, X, CheckCircle2 } from "lucide-react";
 import { useCart } from "@/context/cart-context";
 import { useToast } from "@/context/toast-context";
 import { useCatalog } from "@/context/catalog-context";
-import { TeeArt } from "@/components/shared/tee-art";
+import { ProductVisual } from "@/components/shared/product-visual";
 import { Button } from "@/components/ui/button";
+
 import { formatPrice } from "@/lib/utils";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
@@ -29,7 +30,8 @@ export function CartDrawer() {
     removeCoupon,
   } = useCart();
   const { toast } = useToast();
-  const { getUniverse } = useCatalog();
+  const { getUniverse, getProductBySlug } = useCatalog();
+
   useBodyScrollLock(isOpen);
   const [couponInput, setCouponInput] = useState("");
 
@@ -109,15 +111,19 @@ export function CartDrawer() {
                   <ul className="flex flex-col gap-5">
                     {lines.map((line) => {
                       const universe = getUniverse(line.universe)!;
+                      const product = getProductBySlug(line.slug);
+                      const image = line.image ?? product?.image;
                       return (
                         <li key={`${line.productId}-${line.size}-${line.color}`} className="flex gap-3">
-                          <TeeArt
+                          <ProductVisual
+                            image={image}
                             color={universe.color}
                             icon={line.artIcon}
                             label={line.name}
                             className="h-20 w-16 shrink-0"
                           />
                           <div className="flex flex-1 flex-col">
+
                             <div className="flex items-start justify-between gap-2">
                               <p className="text-sm font-medium text-ink">{line.name}</p>
                               <button

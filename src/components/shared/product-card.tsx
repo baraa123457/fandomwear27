@@ -56,9 +56,11 @@ export function ProductCard({ product }: { product: Product }) {
         color: defaultColor,
         universe: product.universe,
         artIcon: product.artIcon,
+        image: product.image,
       },
       1
     );
+
 
     open();
 

@@ -6,8 +6,9 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Search, X } from "lucide-react";
 import { useCatalog } from "@/context/catalog-context";
-import { TeeArt } from "@/components/shared/tee-art";
+import { ProductVisual } from "@/components/shared/product-visual";
 import { formatPrice } from "@/lib/utils";
+
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
 export function SearchOverlay({
@@ -125,12 +126,14 @@ export function SearchOverlay({
                               onClick={onClose}
                               className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-ink/5"
                             >
-                              <TeeArt
+                              <ProductVisual
+                                image={p.image}
                                 color={universe.color}
                                 icon={p.artIcon}
                                 label={p.name}
                                 className="h-12 w-10 shrink-0"
                               />
+
                               <div className="flex-1 min-w-0">
                                 <p className="truncate text-sm font-medium text-ink">{p.name}</p>
                                 <p className="text-xs text-ink-faint">{universe.label}</p>

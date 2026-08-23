@@ -29,10 +29,12 @@ export default function WishlistPage() {
           color: p.colors[0]?.name ?? "Default",
           universe: p.universe,
           artIcon: p.artIcon,
+          image: p.image,
         },
         1
       );
     });
+
     open();
     toast({ variant: "success", title: `Added ${items.length} items to cart` });
   };

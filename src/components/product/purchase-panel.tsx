@@ -46,9 +46,11 @@ export function PurchasePanel({ product }: { product: Product }) {
         color,
         universe: product.universe,
         artIcon: product.artIcon,
+        image: product.image,
       },
       qty
     );
+
 
     open();
 

@@ -16,8 +16,9 @@ import { useCart } from "@/context/cart-context";
 import { useOrders, Order } from "@/context/orders-context";
 import { useToast } from "@/context/toast-context";
 import { Button } from "@/components/ui/button";
-import { TeeArt } from "@/components/shared/tee-art";
+import { ProductVisual } from "@/components/shared/product-visual";
 import { Dropdown } from "@/components/shared/dropdown";
+
 import { useCatalog } from "@/context/catalog-context";
 import { formatPrice, cn } from "@/lib/utils";
 
@@ -91,7 +92,8 @@ export default function CheckoutPage() {
   const { lines, subtotal, discount, coupon, applyCoupon, removeCoupon, clearCart, close } = useCart();
   const { placeOrder } = useOrders();
   const { toast } = useToast();
-  const { getUniverse } = useCatalog();
+  const { getUniverse, getProductBySlug } = useCatalog();
+
   const [placing, setPlacing] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
   const [couponInput, setCouponInput] = useState("");
@@ -387,9 +389,17 @@ export default function CheckoutPage() {
           <ul className="mt-4 flex flex-col gap-4">
             {lines.map((line) => {
               const universe = getUniverse(line.universe)!;
+              const product = getProductBySlug(line.slug);
+              const image = line.image ?? product?.image;
               return (
                 <li key={`${line.productId}-${line.size}-${line.color}`} className="flex gap-3">
-                  <TeeArt color={universe.color} icon={line.artIcon} label={line.name} className="h-16 w-13 shrink-0" />
+                  <ProductVisual
+                    image={image}
+                    color={universe.color}
+                    icon={line.artIcon}
+                    label={line.name}
+                    className="h-16 w-13 shrink-0"
+                  />
                   <div className="flex-1 text-sm">
                     <p className="font-medium text-ink">{line.name}</p>
                     <p className="text-xs text-ink-faint">
@@ -400,6 +410,7 @@ export default function CheckoutPage() {
                 </li>
               );
             })}
+
           </ul>
 
           {coupon ? (

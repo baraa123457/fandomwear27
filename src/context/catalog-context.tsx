@@ -102,6 +102,39 @@ interface CatalogContextValue {
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
 
+const PRODUCTS_CACHE_KEY = "fandomwear:products-cache";
+const UNIVERSES_CACHE_KEY = "fandomwear:universes-cache";
+
+function getInitialProducts(): Product[] {
+  if (typeof window !== "undefined") {
+    try {
+      const cached = localStorage.getItem(PRODUCTS_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }
+  return seedProducts;
+}
+
+function getInitialUniverses(): UniverseInfo[] {
+  if (typeof window !== "undefined") {
+    try {
+      const cached = localStorage.getItem(UNIVERSES_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }
+  return seedUniverses;
+}
+
 export function CatalogProvider({
   children,
 }: {
@@ -112,15 +145,15 @@ export function CatalogProvider({
    *
    * Supabase is the source of truth for products and universes.
    *
-   * We start with the seed data only so the UI has something to render
-   * while Supabase is loading or temporarily unavailable.
+   * We start with cached data (or seed data on very first visit) so the
+   * UI renders instantly without any flickering or flash of wrong items.
    *
-   * Once Supabase responds, its data replaces the seed data.
+   * Once Supabase responds, its fresh data updates state and local cache.
    */
 
-  const [products, setProducts] = useState<Product[]>(seedProducts);
+  const [products, setProducts] = useState<Product[]>(getInitialProducts);
 
-  const [universes, setUniverses] = useState<UniverseInfo[]>([]);
+  const [universes, setUniverses] = useState<UniverseInfo[]>(getInitialUniverses);
 
   const [categories, setCategories] =
     useState<string[]>(seedCategories);
@@ -137,13 +170,13 @@ export function CatalogProvider({
    * These are used for rollback when a Supabase mutation fails.
    */
 
-  const productsRef = useRef<Product[]>(seedProducts);
+  const productsRef = useRef<Product[]>(products);
 
   useEffect(() => {
     productsRef.current = products;
   }, [products]);
 
-  const universesRef = useRef<UniverseInfo[]>([]);
+  const universesRef = useRef<UniverseInfo[]>(universes);
 
   useEffect(() => {
     universesRef.current = universes;
@@ -204,6 +237,11 @@ export function CatalogProvider({
       const supabase = createClient();
       const rows = await fetchProducts(supabase);
       setProducts(rows);
+      try {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(rows));
+      } catch {
+        /* storage full or unavailable */
+      }
     } catch (err) {
       console.warn(
         "[catalog] Supabase products fetch failed. Using seed products as fallback:",
@@ -224,6 +262,11 @@ export function CatalogProvider({
 
         if (!cancelled) {
           setProducts(rows);
+          try {
+            localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(rows));
+          } catch {
+            /* storage full or unavailable */
+          }
         }
       } catch (err) {
         console.warn(
@@ -264,6 +307,11 @@ export function CatalogProvider({
 
         if (!cancelled) {
           setUniverses(rows);
+          try {
+            localStorage.setItem(UNIVERSES_CACHE_KEY, JSON.stringify(rows));
+          } catch {
+            /* storage full or unavailable */
+          }
         }
       } catch (err) {
         console.warn(
@@ -281,6 +329,7 @@ export function CatalogProvider({
       cancelled = true;
     };
   }, []);
+
 
   /*
    * Load real sales counts from Supabase (see migration

@@ -32,6 +32,8 @@ interface HomepageSettingsContextValue {
 const HomepageSettingsContext =
   createContext<HomepageSettingsContextValue | null>(null);
 
+const STORAGE_KEY = "fandomwear:homepage-settings";
+
 const DEFAULT_SETTINGS: HomepageSettings = {
   heroProduct1: null,
   heroProduct2: null,
@@ -40,12 +42,26 @@ const DEFAULT_SETTINGS: HomepageSettings = {
   bestsellerProductIds: [],
 };
 
+function getInitialSettings(): HomepageSettings {
+  if (typeof window !== "undefined") {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(cached) };
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return DEFAULT_SETTINGS;
+}
+
 export function HomepageSettingsProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [settings, setSettings] = useState<HomepageSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<HomepageSettings>(getInitialSettings);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -55,7 +71,14 @@ export function HomepageSettingsProvider({
       try {
         const supabase = createClient();
         const result = await fetchHomepageSettings(supabase);
-        if (!cancelled) setSettings(result);
+        if (!cancelled) {
+          setSettings(result);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+          } catch {
+            /* ignore */
+          }
+        }
       } catch (err) {
         console.warn("[homepage-settings] Failed to load:", err);
       } finally {
@@ -67,6 +90,7 @@ export function HomepageSettingsProvider({
       cancelled = true;
     };
   }, []);
+
 
   const setHeroProducts = useCallback(
     async (ids: HeroProductIds) => {

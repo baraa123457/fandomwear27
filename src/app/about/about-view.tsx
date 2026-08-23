@@ -62,7 +62,7 @@ export default function AboutView() {
           style={{ background: "radial-gradient(circle at 20% 20%, #7c5cff22, transparent 55%)" }}
           aria-hidden
         />
-        <div className="grid-veil pointer-events-none absolute inset-0 opacity-30" aria-hidden />
+
 
         <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
           <Breadcrumbs items={[{ label: "About Us" }]} />

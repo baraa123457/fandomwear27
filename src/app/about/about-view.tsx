@@ -55,55 +55,56 @@ export default function AboutView() {
 
   return (
     <div>
-      <div className="mx-auto max-w-7xl px-5 pt-8 sm:px-8">
-        <Breadcrumbs items={[{ label: "About Us" }]} />
-      </div>
-
       {/* Hero */}
-
-      <section id="story" className="relative overflow-hidden border-b border-line py-16 sm:py-24">
+      <section id="story" className="relative overflow-hidden border-b border-line pb-16 pt-8 sm:pb-24 sm:pt-10">
         <div
           className="pointer-events-none absolute inset-0 opacity-60"
           style={{ background: "radial-gradient(circle at 20% 20%, #7c5cff22, transparent 55%)" }}
           aria-hidden
         />
         <div className="grid-veil pointer-events-none absolute inset-0 opacity-30" aria-hidden />
-        <motion.div
-          variants={fadeInUp}
-          initial="hidden"
-          animate="show"
-          className="relative mx-auto max-w-3xl px-5 sm:px-8"
-        >
-          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-medium text-ink-dim">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent-cyan animate-glow-pulse" />
-            Our Story & Craftsmanship
-          </span>
 
-          <h1 className="mt-6 text-balance font-display text-4xl font-extrabold tracking-tight text-ink sm:text-5xl lg:text-6xl">
-            Wear your favorite universes as{" "}
-            <span className="bg-gradient-to-r from-accent-purple via-accent-purple to-accent-cyan bg-clip-text text-transparent">
-              premium streetwear.
+        <div className="relative mx-auto max-w-7xl px-5 sm:px-8">
+          <Breadcrumbs items={[{ label: "About Us" }]} />
+
+          <motion.div
+            variants={fadeInUp}
+            initial="hidden"
+            animate="show"
+            className="mt-8 max-w-3xl"
+          >
+            <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-medium text-ink-dim">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent-cyan animate-glow-pulse" />
+              Our Story & Craftsmanship
             </span>
-          </h1>
 
-          <p className="mt-6 max-w-2xl text-base leading-relaxed text-ink-dim sm:text-lg">
-            FandomWear was created with a clear vision: fandom apparel should never feel cheap, generic, or poorly fitting.
-            We blend deep love for iconic anime, gaming, and cinematic universes with premium streetwear design — giving you
-            heavyweight cotton, bespoke oversized cuts, and original in-house artwork you can wear anywhere with pride.
-          </p>
+            <h1 className="mt-6 text-balance font-display text-4xl font-extrabold tracking-tight text-ink sm:text-5xl lg:text-6xl">
+              Wear your favorite universes as{" "}
+              <span className="bg-gradient-to-r from-accent-purple via-accent-purple to-accent-cyan bg-clip-text text-transparent">
+                premium streetwear.
+              </span>
+            </h1>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button asChild size="lg" variant="accent">
-              <Link href="/shop">
-                Explore The Collection <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link href="/help/contact">Contact Us</Link>
-            </Button>
-          </div>
-        </motion.div>
+            <p className="mt-6 max-w-2xl text-base leading-relaxed text-ink-dim sm:text-lg">
+              FandomWear was created with a clear vision: fandom apparel should never feel cheap, generic, or poorly fitting.
+              We blend deep love for iconic anime, gaming, and cinematic universes with premium streetwear design — giving you
+              heavyweight cotton, bespoke oversized cuts, and original in-house artwork you can wear anywhere with pride.
+            </p>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Button asChild size="lg" variant="accent">
+                <Link href="/shop">
+                  Explore The Collection <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild size="lg" variant="outline">
+                <Link href="/help/contact">Contact Us</Link>
+              </Button>
+            </div>
+          </motion.div>
+        </div>
       </section>
+
 
       {/* Stats */}
       <Reveal className="border-b border-line bg-surface/40 py-12">

@@ -43,18 +43,25 @@ export function Collections() {
           </Link>
         </div>
 
-        <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div
+          className={
+            universes.length === 3
+              ? "mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+              : universes.length === 4
+                ? "mt-10 grid grid-cols-2 gap-5 lg:grid-cols-4"
+                : "mt-10 grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4"
+          }
+        >
           {universes.length === 0 ? (
-            <>
-              <div className="col-span-2 row-span-2 h-72 rounded-3xl border border-line/50 bg-surface/50 animate-pulse" />
-              <div className="h-32 rounded-2xl border border-line/50 bg-surface/50 animate-pulse" />
-              <div className="h-32 rounded-2xl border border-line/50 bg-surface/50 animate-pulse" />
-              <div className="h-32 rounded-2xl border border-line/50 bg-surface/50 animate-pulse" />
-            </>
+            [...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="h-44 rounded-2xl border border-line/50 bg-surface/50 animate-pulse"
+              />
+            ))
           ) : (
             universes.map((u, i) => {
               const Icon = resolveIcon(u.icon);
-              const featured = i === 0;
               const count = designCounts.get(u.id) ?? 0;
               return (
                 <motion.div
@@ -63,44 +70,44 @@ export function Collections() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-60px" }}
                   transition={{ duration: 0.45, delay: i * 0.04, ease: "easeOut" }}
-                  className={featured ? "col-span-2 row-span-2" : ""}
+                  className="h-full"
                 >
+                  <Link
+                    href={`/shop?universe=${u.id}`}
+                    className="group relative flex h-full min-h-[175px] flex-col justify-between overflow-hidden rounded-2xl border border-line bg-surface p-6 transition-all duration-300 hover:border-transparent hover:shadow-xl"
+                    style={{ ["--glow" as string]: u.color }}
+                  >
+                    <div
+                      className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                      style={{
+                        background: `radial-gradient(ellipse at 50% 20%, ${u.color}25 0%, ${u.color}08 55%, transparent 80%)`,
+                        boxShadow: `inset 0 0 0 1px ${u.color}60, 0 10px 30px -10px ${u.color}40`,
+                      }}
+                      aria-hidden
+                    />
+                    <div className="relative flex items-start justify-between">
+                      <span
+                        className="flex h-10 w-10 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110"
+                        style={{ backgroundColor: `${u.color}22`, color: u.color }}
+                      >
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <ArrowUpRight className="h-4 w-4 text-ink-faint opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                    </div>
+                    <div className="relative">
+                      <h3 className="font-display text-lg font-bold text-ink">{u.label}</h3>
+                      <p className="mt-1 text-xs text-ink-faint">{u.tagline}</p>
+                      <p className="mt-3 font-mono text-[11px] text-ink-faint">
+                        {count} {count === 1 ? "design" : "designs"}
+                      </p>
+                    </div>
+                  </Link>
+                </motion.div>
+              );
+            })
+          )}
+        </div>
 
-                <Link
-                  href={`/shop?universe=${u.id}`}
-                  className="group relative flex h-full min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border border-line bg-surface p-5 transition-all duration-300 hover:border-transparent"
-                  style={{ ["--glow" as string]: u.color }}
-                >
-                  <div
-                    className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                    style={{
-                      background: `radial-gradient(circle at 30% 20%, ${u.color}2e, transparent 60%)`,
-                      boxShadow: `inset 0 0 0 1px ${u.color}66, 0 0 40px -10px ${u.color}55`,
-                    }}
-                    aria-hidden
-                  />
-                  <div className="relative flex items-start justify-between">
-                    <span
-                      className="flex h-10 w-10 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110"
-                      style={{ backgroundColor: `${u.color}22`, color: u.color }}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <ArrowUpRight className="h-4 w-4 text-ink-faint opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                  </div>
-                  <div className="relative">
-                    <h3 className="font-display text-lg font-bold text-ink">{u.label}</h3>
-                    <p className="mt-1 text-xs text-ink-faint">{u.tagline}</p>
-                    <p className="mt-3 font-mono text-[11px] text-ink-faint">
-                      {count} {count === 1 ? "design" : "designs"}
-                    </p>
-                  </div>
-                </Link>
-              </motion.div>
-            );
-          })
-        )}
-      </div>
 
 
       </div>

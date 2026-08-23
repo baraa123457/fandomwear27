@@ -171,10 +171,13 @@ export default function OrdersPage() {
                           {order.shipping === 0 ? "Free" : formatPrice(order.shipping)}
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Tax</span>
-                        <span className="font-mono text-ink-dim">{formatPrice(order.tax)}</span>
-                      </div>
+                      {order.tax > 0 && (
+                        <div className="flex justify-between">
+                          <span>Tax</span>
+                          <span className="font-mono text-ink-dim">{formatPrice(order.tax)}</span>
+                        </div>
+                      )}
+
                     </div>
                   </div>
                 )}

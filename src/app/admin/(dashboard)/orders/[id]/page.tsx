@@ -261,10 +261,13 @@ export default function AdminOrderDetailsPage() {
                   {order.shipping === 0 ? "Free" : formatPrice(order.shipping)}
                 </dd>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-ink-faint">Tax</dt>
-                <dd className="font-mono text-ink-dim">{formatPrice(order.tax)}</dd>
-              </div>
+              {order.tax > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-ink-faint">Tax</dt>
+                  <dd className="font-mono text-ink-dim">{formatPrice(order.tax)}</dd>
+                </div>
+              )}
+
               <div className="flex justify-between border-t border-line/60 pt-2 text-base">
                 <dt className="font-semibold text-ink">Total</dt>
                 <dd className="font-mono font-semibold text-ink">{formatPrice(order.total)}</dd>

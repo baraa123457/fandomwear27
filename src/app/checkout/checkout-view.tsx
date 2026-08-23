@@ -20,13 +20,11 @@ import { ProductVisual } from "@/components/shared/product-visual";
 import { Dropdown } from "@/components/shared/dropdown";
 
 import { useCatalog } from "@/context/catalog-context";
+import { useStoreSettings } from "@/context/store-settings-context";
 import { formatPrice, cn } from "@/lib/utils";
 
-const SHIPPING_FLAT = 5.99;
-const FREE_SHIPPING_THRESHOLD = 75;
-const TAX_RATE = 0.08;
-
 type PaymentMethod = "card" | "cod";
+
 
 // Input formatters — keep each field to the kind of value it actually holds.
 function onlyLetters(value: string) {
@@ -93,6 +91,7 @@ export default function CheckoutPage() {
   const { placeOrder } = useOrders();
   const { toast } = useToast();
   const { getUniverse, getProductBySlug } = useCatalog();
+  const { settings: storeSettings } = useStoreSettings();
 
   const [placing, setPlacing] = useState(false);
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
@@ -115,11 +114,16 @@ export default function CheckoutPage() {
     cvc: "",
   });
 
+  const taxRate = storeSettings.taxRate ?? 0;
+  const shippingFlatRate = storeSettings.shippingFlatRate ?? 0;
+  const shippingFreeThreshold = storeSettings.shippingFreeThreshold ?? 0;
+
   const discountedSubtotal = subtotal - discount;
   const shipping =
-    discountedSubtotal >= FREE_SHIPPING_THRESHOLD || discountedSubtotal === 0 ? 0 : SHIPPING_FLAT;
-  const tax = discountedSubtotal * TAX_RATE;
+    discountedSubtotal >= shippingFreeThreshold || discountedSubtotal === 0 ? 0 : shippingFlatRate;
+  const tax = discountedSubtotal * taxRate;
   const total = discountedSubtotal + shipping + tax;
+
 
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return;
@@ -453,10 +457,13 @@ export default function CheckoutPage() {
               <span>Shipping</span>
               <span className="font-mono text-ink">{shipping === 0 ? "Free" : formatPrice(shipping)}</span>
             </div>
-            <div className="flex justify-between text-ink-dim">
-              <span>Estimated tax</span>
-              <span className="font-mono text-ink">{formatPrice(tax)}</span>
-            </div>
+            {tax > 0 && (
+              <div className="flex justify-between text-ink-dim">
+                <span>Estimated tax</span>
+                <span className="font-mono text-ink">{formatPrice(tax)}</span>
+              </div>
+            )}
+
             <div className="mt-2 flex justify-between border-t border-line pt-3 text-base font-semibold text-ink">
               <span>Total</span>
               <span className="font-mono">{formatPrice(total)}</span>

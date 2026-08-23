@@ -25,12 +25,13 @@ const DEFAULT_SETTINGS: StoreSettings = {
   contactPhone: "",
   contactAddress: "",
   currency: "EGP",
-  shippingFlatRate: 5.99,
-  shippingFreeThreshold: 75.0,
-  taxRate: 0.08,
+  shippingFlatRate: 50.0,
+  shippingFreeThreshold: 500.0,
+  taxRate: 0.0,
   paymentCodEnabled: true,
   paymentCardEnabled: true,
 };
+
 
 function rowToSettings(
   row: Database["public"]["Tables"]["store_settings"]["Row"]

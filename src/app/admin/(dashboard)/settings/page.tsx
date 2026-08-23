@@ -257,11 +257,11 @@ export default function AdminSettingsPage() {
               onChange={(v) => patch("shippingFreeThreshold", v)}
             />
           </Field>
-          <Field label="Tax Rate" hint="Stored as decimal (e.g. 0.08 = 8%)">
+          <Field label="Tax Rate" hint="Set to 0 to disable tax (e.g. 0 = 0%, 0.14 = 14%)">
             <NumberInput
               value={draft.taxRate}
               onChange={(v) => patch("taxRate", v)}
-              step={0.001}
+              step={0.01}
             />
           </Field>
         </div>
@@ -269,15 +269,13 @@ export default function AdminSettingsPage() {
         <div className="mt-4 rounded-xl border border-line bg-surface-raised px-4 py-3">
           <div className="flex items-start gap-2">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-faint" />
-            <p className="text-[10px] text-ink-faint">
-              Shipping and tax values shown here are for reference and admin visibility. The
-              checkout flow uses values calculated by the Supabase{" "}
-              <code className="rounded bg-line/30 px-1">create_order()</code> RPC. A future
-              update will wire these settings directly into the RPC.
+            <p className="text-[11px] text-ink-dim">
+              Shipping flat rate, free shipping threshold, and tax rate configured here are applied live across the store and at checkout.
             </p>
           </div>
         </div>
       </section>
+
 
       {/* Payment Methods */}
       <section className="rounded-2xl border border-line bg-surface p-6">

@@ -12,6 +12,23 @@ import type { Database } from "@/lib/supabase/database.types";
  * itself (admin routes are still gated client-side by AdminAuthProvider).
  */
 export async function middleware(request: NextRequest) {
+  const { pathname, searchParams, origin } = request.nextUrl;
+
+  // ── OAuth code landed at root ──────────────────────────────────────────────
+  // When Supabase redirects back to the site URL (instead of /auth/callback),
+  // the PKCE code ends up at /?code=…  Catch it here and forward it to the
+  // route handler that actually knows how to exchange it.
+  const code = searchParams.get("code");
+  if (code && pathname === "/") {
+    const callbackUrl = new URL("/auth/callback", origin);
+    callbackUrl.searchParams.set("code", code);
+    // Preserve ?next if present
+    const next = searchParams.get("next");
+    if (next) callbackUrl.searchParams.set("next", next);
+    return NextResponse.redirect(callbackUrl);
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(
@@ -41,6 +58,7 @@ export async function middleware(request: NextRequest) {
 
   return supabaseResponse;
 }
+
 
 export const config = {
   matcher: [

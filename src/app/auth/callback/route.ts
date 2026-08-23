@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   const code = searchParams.get("code");
   // Where to send the user after login (defaults to orders page)
-  const next = searchParams.get("next") ?? "/account/orders";
+  const next = searchParams.get("next") ?? "/";
 
   if (code) {
     const cookieStore = await cookies();

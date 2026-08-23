@@ -108,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient();
     // Must point to /auth/callback so the PKCE code gets exchanged for a session
     const redirectTo = typeof window !== "undefined"
-      ? `${window.location.origin}/auth/callback?next=/account/orders`
+      ? `${window.location.origin}/auth/callback?next=/`
       : undefined;
     const { error } = await supabase.auth.signInWithOAuth({
       provider,

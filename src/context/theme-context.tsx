@@ -18,18 +18,36 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
  * mode. A small blocking script in the document head (see layout.tsx) applies
  * the saved theme class before paint so there's no flash of the wrong theme.
  */
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
-
-  useEffect(() => {
+/**
+ * Read the saved theme synchronously on the client so the initial React state
+ * already matches what the blocking <script> in <head> applied to <html>.
+ * This prevents the one-frame flash where the "dark" default briefly removes
+ * the "light" class that the inline script already set.
+ *
+ * On the server (SSR) we always return "dark"; the inline script and
+ * suppressHydrationWarning on <html> handle the mismatch transparently.
+ */
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "dark";
+  try {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored === "light" || stored === "dark") setTheme(stored);
-  }, []);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    /* storage blocked */
+  }
+  return "dark";
+}
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  // Lazy initializer reads localStorage on the very first client render,
+  // so `theme` is already correct before any effect runs.
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light");
     document.documentElement.style.colorScheme = theme;
   }, [theme]);
+
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {

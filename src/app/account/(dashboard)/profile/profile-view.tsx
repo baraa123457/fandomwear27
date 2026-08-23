@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Trash2, User, Mail, ShieldAlert } from "lucide-react";
 
 export default function ProfilePage() {
-  const { user, updateProfile, deleteAccount, signOut } = useAuth();
+  const { user, updateProfile, deleteAccount } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
 

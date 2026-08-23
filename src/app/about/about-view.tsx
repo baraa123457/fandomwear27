@@ -55,13 +55,12 @@ export default function AboutView() {
 
   return (
     <div>
-      <div className="border-b border-line/50 bg-surface/30">
-        <div className="mx-auto max-w-3xl px-5 py-3 sm:px-8">
-          <Breadcrumbs items={[{ label: "About Us" }]} />
-        </div>
+      <div className="mx-auto max-w-7xl px-5 pt-8 sm:px-8">
+        <Breadcrumbs items={[{ label: "About Us" }]} />
       </div>
 
       {/* Hero */}
+
       <section id="story" className="relative overflow-hidden border-b border-line py-16 sm:py-24">
         <div
           className="pointer-events-none absolute inset-0 opacity-60"

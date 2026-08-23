@@ -44,19 +44,28 @@ export function Collections() {
         </div>
 
         <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {universes.map((u, i) => {
-            const Icon = resolveIcon(u.icon);
-            const featured = i === 0;
-            const count = designCounts.get(u.id) ?? 0;
-            return (
-              <motion.div
-                key={u.id}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-60px" }}
-                transition={{ duration: 0.45, delay: i * 0.04, ease: "easeOut" }}
-                className={featured ? "col-span-2 row-span-2" : ""}
-              >
+          {universes.length === 0 ? (
+            <>
+              <div className="col-span-2 row-span-2 h-72 rounded-3xl border border-line/50 bg-surface/50 animate-pulse" />
+              <div className="h-32 rounded-2xl border border-line/50 bg-surface/50 animate-pulse" />
+              <div className="h-32 rounded-2xl border border-line/50 bg-surface/50 animate-pulse" />
+              <div className="h-32 rounded-2xl border border-line/50 bg-surface/50 animate-pulse" />
+            </>
+          ) : (
+            universes.map((u, i) => {
+              const Icon = resolveIcon(u.icon);
+              const featured = i === 0;
+              const count = designCounts.get(u.id) ?? 0;
+              return (
+                <motion.div
+                  key={u.id}
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-60px" }}
+                  transition={{ duration: 0.45, delay: i * 0.04, ease: "easeOut" }}
+                  className={featured ? "col-span-2 row-span-2" : ""}
+                >
+
                 <Link
                   href={`/shop?universe=${u.id}`}
                   className="group relative flex h-full min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl border border-line bg-surface p-5 transition-all duration-300 hover:border-transparent"
@@ -89,8 +98,11 @@ export function Collections() {
                 </Link>
               </motion.div>
             );
-          })}
-        </div>
+          })
+        )}
+      </div>
+
+
       </div>
     </section>
   );

@@ -5,13 +5,10 @@ import { ProductCard } from "@/components/shared/product-card";
 import { Reveal } from "@/components/shared/reveal";
 
 export function FeaturedProducts() {
-  const { getFeatured } = useCatalog();
+  const { getFeatured, isLoading } = useCatalog();
   const items = getFeatured(8);
 
-  // Featured is manual curation (admin Products page) — if nothing has
-  // been marked featured yet, there's nothing honest to show here, so the
-  // section simply doesn't render rather than showing an empty grid.
-  if (items.length === 0) return null;
+  if (!isLoading && items.length === 0) return null;
 
   return (
     <section className="border-b border-line bg-void py-20 sm:py-28">
@@ -29,11 +26,22 @@ export function FeaturedProducts() {
         </div>
 
         <div className="mt-10 grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 lg:grid-cols-4">
-          {items.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
+          {items.length === 0 ? (
+            [...Array(4)].map((_, i) => (
+              <div key={i} className="flex flex-col">
+                <div className="aspect-[3/4] w-full rounded-2xl border border-line/40 bg-surface/40 animate-pulse" />
+                <div className="mt-3 h-4 w-3/4 rounded-lg bg-surface/60 animate-pulse" />
+                <div className="mt-2 h-4 w-1/3 rounded-lg bg-surface/60 animate-pulse" />
+              </div>
+            ))
+          ) : (
+            items.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))
+          )}
         </div>
       </Reveal>
     </section>
   );
 }
+

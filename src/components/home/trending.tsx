@@ -14,8 +14,11 @@ function getTrending(products: Product[], limit = 6) {
 }
 
 export function Trending() {
-  const { products } = useCatalog();
+  const { products, isLoading } = useCatalog();
   const items = getTrending(products, 6);
+
+  if (!isLoading && items.length === 0) return null;
+
   return (
     <section className="border-b border-line bg-surface/40 py-20 sm:py-28">
       <Reveal className="mx-auto max-w-7xl px-5 sm:px-8">
@@ -35,13 +38,24 @@ export function Trending() {
 
         <div className="mt-8">
           <ScrollRow>
-            {items.map((p) => (
-              <div key={p.id} className="w-[230px] shrink-0 snap-start sm:w-[260px] lg:w-[270px]">
-                <ProductCard product={p} />
-              </div>
-            ))}
+            {items.length === 0 ? (
+              [...Array(4)].map((_, i) => (
+                <div key={i} className="w-[230px] shrink-0 snap-start sm:w-[260px] lg:w-[270px]">
+                  <div className="aspect-[3/4] w-full rounded-2xl border border-line/40 bg-surface/40 animate-pulse" />
+                  <div className="mt-3 h-4 w-3/4 rounded-lg bg-surface/60 animate-pulse" />
+                  <div className="mt-2 h-4 w-1/3 rounded-lg bg-surface/60 animate-pulse" />
+                </div>
+              ))
+            ) : (
+              items.map((p) => (
+                <div key={p.id} className="w-[230px] shrink-0 snap-start sm:w-[260px] lg:w-[270px]">
+                  <ProductCard product={p} />
+                </div>
+              ))
+            )}
           </ScrollRow>
         </div>
+
 
       </Reveal>
     </section>

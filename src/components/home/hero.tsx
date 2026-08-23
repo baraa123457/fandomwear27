@@ -148,44 +148,52 @@ export function Hero() {
           transition={{ duration: 0.7, ease: "easeOut", delay: 0.15 }}
           className="relative mx-auto h-[420px] w-full max-w-md sm:h-[520px]"
         >
-          {heroTees.map((p, i) => {
-            const universe = getUniverse(p.universe)!;
-            const positions = [
-              "left-2 top-6 h-64 w-52 rotate-[-9deg] z-10",
-              "right-0 top-0 h-72 w-56 rotate-[7deg] z-20",
-              "left-10 bottom-0 h-64 w-52 rotate-[4deg] z-30",
-            ];
-            return (
-              <motion.div
-                key={p.id}
-                className={`absolute ${positions[i]}`}
-                animate={prefersReducedMotion ? undefined : { y: [0, -14, 0] }}
-                transition={{
-                  duration: 5 + i,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: i * 0.4,
-                }}
-              >
-                <Link
-                  href={`/product/${p.slug}`}
-                  aria-label={`View ${p.name}`}
-                  className="group block h-full w-full rounded-3xl transition-transform duration-300 hover:scale-105 cursor-pointer"
+          {heroTees.length === 0 ? (
+            <div className="relative h-full w-full">
+              <div className="absolute left-2 top-6 h-64 w-52 rotate-[-9deg] rounded-3xl border border-line/40 bg-surface/40 animate-pulse" />
+              <div className="absolute right-0 top-0 h-72 w-56 rotate-[7deg] rounded-3xl border border-line/40 bg-surface/60 animate-pulse" />
+              <div className="absolute left-10 bottom-0 h-64 w-52 rotate-[4deg] rounded-3xl border border-line/40 bg-surface/80 animate-pulse" />
+            </div>
+          ) : (
+            heroTees.map((p, i) => {
+              const universe = getUniverse(p.universe)!;
+              const positions = [
+                "left-2 top-6 h-64 w-52 rotate-[-9deg] z-10",
+                "right-0 top-0 h-72 w-56 rotate-[7deg] z-20",
+                "left-10 bottom-0 h-64 w-52 rotate-[4deg] z-30",
+              ];
+              return (
+                <motion.div
+                  key={p.id}
+                  className={`absolute ${positions[i]}`}
+                  animate={prefersReducedMotion ? undefined : { y: [0, -14, 0] }}
+                  transition={{
+                    duration: 5 + i,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: i * 0.4,
+                  }}
                 >
-                  <ProductVisual
-                    image={p.image}
-                    color={universe.color}
-                    icon={p.artIcon}
-                    label={p.name}
-                    variant="hero"
-                    className="h-full w-full border border-line/80 shadow-2xl transition-all duration-300 group-hover:border-accent-cyan/60 group-hover:shadow-accent-cyan/10"
-                  />
-                </Link>
-              </motion.div>
-
-            );
-          })}
+                  <Link
+                    href={`/product/${p.slug}`}
+                    aria-label={`View ${p.name}`}
+                    className="group block h-full w-full rounded-3xl transition-transform duration-300 hover:scale-105 cursor-pointer"
+                  >
+                    <ProductVisual
+                      image={p.image}
+                      color={universe.color}
+                      icon={p.artIcon}
+                      label={p.name}
+                      variant="hero"
+                      className="h-full w-full border border-line/80 shadow-2xl transition-all duration-300 group-hover:border-accent-cyan/60 group-hover:shadow-accent-cyan/10"
+                    />
+                  </Link>
+                </motion.div>
+              );
+            })
+          )}
         </motion.div>
+
       </div>
     </section>
   );

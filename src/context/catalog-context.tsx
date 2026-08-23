@@ -90,6 +90,8 @@ interface CatalogContextValue {
   /** Restore product stock in memory upon order cancellation */
   restoreStock: (items: { productId: string; quantity: number }[]) => void;
 
+  /** Whether products and universes are currently loading from Supabase on cold start */
+  isLoading: boolean;
   /**
    * Re-fetches products (including `stock`) from Supabase. Call after an
    * order is placed or cancelled/reinstated, so every stock display
@@ -117,7 +119,7 @@ function getInitialProducts(): Product[] {
       /* ignore storage errors */
     }
   }
-  return seedProducts;
+  return [];
 }
 
 function getInitialUniverses(): UniverseInfo[] {
@@ -132,8 +134,9 @@ function getInitialUniverses(): UniverseInfo[] {
       /* ignore storage errors */
     }
   }
-  return seedUniverses;
+  return [];
 }
+
 
 export function CatalogProvider({
   children,
@@ -157,6 +160,11 @@ export function CatalogProvider({
 
   const [categories, setCategories] =
     useState<string[]>(seedCategories);
+
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return getInitialProducts().length === 0;
+  });
 
   // Real units-sold-per-product (see fetchProductSalesCounts). Starts
   // empty rather than seeded with fake numbers — until this loads,
@@ -243,11 +251,7 @@ export function CatalogProvider({
         /* storage full or unavailable */
       }
     } catch (err) {
-      console.warn(
-        "[catalog] Supabase products fetch failed. Using seed products as fallback:",
-        err
-      );
-      setProducts(seedProducts);
+      console.warn("[catalog] Supabase products fetch failed:", err);
     }
   }, []);
 
@@ -262,6 +266,7 @@ export function CatalogProvider({
 
         if (!cancelled) {
           setProducts(rows);
+          setIsLoading(false);
           try {
             localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(rows));
           } catch {
@@ -269,13 +274,9 @@ export function CatalogProvider({
           }
         }
       } catch (err) {
-        console.warn(
-          "[catalog] Supabase products fetch failed. Using seed products as fallback:",
-          err
-        );
-
+        console.warn("[catalog] Supabase products fetch failed:", err);
         if (!cancelled) {
-          setProducts(seedProducts);
+          setIsLoading(false);
         }
       }
     })();
@@ -314,14 +315,7 @@ export function CatalogProvider({
           }
         }
       } catch (err) {
-        console.warn(
-          "[catalog] Supabase universes fetch failed. Using seed universes as fallback:",
-          err
-        );
-
-        if (!cancelled) {
-          setUniverses(seedUniverses);
-        }
+        console.warn("[catalog] Supabase universes fetch failed:", err);
       }
     })();
 
@@ -329,6 +323,7 @@ export function CatalogProvider({
       cancelled = true;
     };
   }, []);
+
 
 
   /*
@@ -958,6 +953,7 @@ export function CatalogProvider({
         getFeatured,
 
         salesCounts,
+        isLoading,
         refreshSalesCounts: loadSalesCounts,
         refreshProducts: loadProducts,
       }),
@@ -965,8 +961,10 @@ export function CatalogProvider({
         products,
         universes,
         categories,
+        isLoading,
 
         addProduct,
+
         updateProduct,
         deleteProduct,
 

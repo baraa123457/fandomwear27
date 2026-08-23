@@ -50,21 +50,21 @@ export function Newsletter() {
             <CheckCircle2 className="h-5 w-5" /> You&apos;re subscribed! Keep an eye on your inbox for our next drop.
           </div>
         ) : (
-          <form onSubmit={handleSubscribe} className="mt-8 mx-auto flex max-w-xl flex-col gap-3.5 sm:flex-row sm:gap-3">
+          <form onSubmit={handleSubscribe} className="mt-8 mx-auto flex w-full max-w-lg flex-col gap-3.5 sm:flex-row sm:gap-3">
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email address..."
-              className="h-14 w-full flex-1 rounded-2xl border-2 border-line bg-surface/90 px-5 text-base text-ink placeholder:text-ink-dim/50 shadow-sm transition-all focus:border-accent-purple focus:bg-surface focus:outline-none focus:ring-4 focus:ring-accent-purple/10"
+              className="min-h-[56px] h-14 w-full shrink-0 flex-1 rounded-2xl border-2 border-line bg-surface px-6 py-4 text-base font-normal text-ink placeholder:text-ink-dim/50 shadow-sm transition-all focus:border-accent-purple focus:bg-surface focus:outline-none focus:ring-4 focus:ring-accent-purple/15"
             />
             <Button
               type="submit"
               size="lg"
               variant="accent"
               disabled={loading}
-              className="h-14 w-full shrink-0 gap-2.5 rounded-2xl px-8 text-base font-bold shadow-lg shadow-accent-purple/20 sm:w-auto"
+              className="min-h-[56px] h-14 w-full shrink-0 gap-2.5 rounded-2xl px-8 text-base font-bold shadow-lg shadow-accent-purple/20 sm:w-auto"
             >
               <Send className="h-4 w-4" /> {loading ? "Joining..." : "Subscribe"}
             </Button>

@@ -61,10 +61,12 @@ export function Hero() {
     offset: ["start start", "end start"],
   });
 
-  // Two-layer parallax: the background grid drifts slowly, the floating tees
-  // drift faster, so the hero gains depth as the page scrolls past it.
-  const bgY = useTransform(scrollYProgress, [0, 1], prefersReducedMotion ? [0, 0] : [0, 60]);
-  const teesY = useTransform(scrollYProgress, [0, 1], prefersReducedMotion ? [0, 0] : [0, 140]);
+  // Subtle parallax: very slight drift so the hero feels alive without
+  // looking broken on mobile. Keep values small so cards don't scroll
+  // out of view on smaller screens.
+  const bgY = useTransform(scrollYProgress, [0, 1], prefersReducedMotion ? [0, 0] : [0, 15]);
+  const teesY = useTransform(scrollYProgress, [0, 1], prefersReducedMotion ? [0, 0] : [0, 30]);
+
 
   const ratedProducts = useMemo(() => products.filter((p) => (p.reviewCount ?? 0) > 0 || p.rating > 0), [products]);
   const avgRating = useMemo(() => {

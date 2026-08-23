@@ -86,7 +86,13 @@ export function Hero() {
 
   return (
     <section ref={sectionRef} className="relative overflow-hidden border-b border-line noise-veil">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-5 pb-16 pt-14 sm:px-8 lg:grid-cols-2 lg:pb-28 lg:pt-20">
+      <motion.div
+        style={{ y: bgY }}
+        className="pointer-events-none absolute inset-0 grid-veil opacity-30"
+        aria-hidden
+      />
+      <div className="relative z-10 mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-5 pb-16 pt-14 sm:px-8 lg:grid-cols-2 lg:pb-28 lg:pt-20">
+
 
         <motion.div
           initial={{ opacity: 0, y: 24 }}

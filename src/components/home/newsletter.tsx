@@ -57,12 +57,13 @@ export function Newsletter() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter your email address..."
-              className="h-12 flex-1 rounded-xl border border-line bg-void px-4 text-sm text-ink placeholder:text-ink-faint focus:border-accent-purple focus:outline-none"
+              className="h-14 w-full flex-1 rounded-2xl border border-line bg-void px-5 text-base text-ink placeholder:text-ink-faint focus:border-accent-purple focus:outline-none sm:h-12 sm:rounded-xl sm:text-sm"
             />
-            <Button type="submit" size="lg" variant="accent" disabled={loading} className="gap-2 shrink-0">
+            <Button type="submit" size="lg" variant="accent" disabled={loading} className="h-14 w-full gap-2 rounded-2xl text-base sm:h-12 sm:w-auto sm:shrink-0 sm:rounded-xl sm:text-sm">
               <Send className="h-4 w-4" /> {loading ? "Joining..." : "Subscribe"}
             </Button>
           </form>
+
         )}
       </Reveal>
     </section>

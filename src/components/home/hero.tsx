@@ -177,7 +177,7 @@ export function Hero() {
                   <Link
                     href={`/product/${p.slug}`}
                     aria-label={`View ${p.name}`}
-                    className="group block h-full w-full rounded-3xl transition-transform duration-300 hover:scale-105 cursor-pointer"
+                    className="group block h-full w-full rounded-3xl transition-transform duration-300 hover:scale-105 cursor-pointer outline-none focus:outline-none focus-visible:outline-none"
                   >
                     <ProductVisual
                       image={p.image}
@@ -185,9 +185,10 @@ export function Hero() {
                       icon={p.artIcon}
                       label={p.name}
                       variant="hero"
-                      className="h-full w-full border border-line/80 shadow-2xl transition-all duration-300 group-hover:border-accent-cyan/60 group-hover:shadow-accent-cyan/10"
+                      className="h-full w-full border border-line/80 shadow-2xl transition-all duration-300 outline-none"
                     />
                   </Link>
+
                 </motion.div>
               );
             })

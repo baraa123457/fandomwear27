@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Reveal } from "@/components/shared/reveal";
 import { useToast } from "@/context/toast-context";
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
 export function Newsletter() {
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
@@ -14,7 +16,25 @@ export function Newsletter() {
 
   const handleSubscribe = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes("@")) return;
+    const trimmed = email.trim();
+
+    if (!trimmed) {
+      toast({
+        variant: "error",
+        title: "Email address required",
+        description: "Please enter your email to subscribe.",
+      });
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(trimmed)) {
+      toast({
+        variant: "error",
+        title: "Invalid email format",
+        description: "Please enter a valid email address (e.g. name@example.com).",
+      });
+      return;
+    }
 
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -50,9 +70,11 @@ export function Newsletter() {
             <CheckCircle2 className="h-5 w-5" /> You&apos;re subscribed! Keep an eye on your inbox for our next drop.
           </div>
         ) : (
-          <form onSubmit={handleSubscribe} className="mt-8 mx-auto flex w-full max-w-lg flex-col gap-3.5 sm:flex-row sm:gap-3">
+          <form onSubmit={handleSubscribe} className="mt-8 mx-auto flex w-full max-w-lg flex-col gap-3.5 sm:flex-row sm:gap-3" noValidate>
             <input
               type="email"
+              inputMode="email"
+              autoComplete="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -69,9 +91,8 @@ export function Newsletter() {
               <Send className="h-4 w-4" /> {loading ? "Joining..." : "Subscribe"}
             </Button>
           </form>
-
-
         )}
+
       </Reveal>
     </section>
   );

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Camera, AtSign, PlaySquare, MessageCircle } from "lucide-react";
 import { useCatalog } from "@/context/catalog-context";
+import { useState, useEffect } from "react";
 
 const columns = [
   {
@@ -31,6 +32,11 @@ const columns = [
 
 export function Footer() {
   const { universes } = useCatalog();
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   return (
     <footer className="border-t border-line bg-void">
       <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8">
@@ -82,7 +88,7 @@ export function Footer() {
               Universes
             </h4>
             <ul className="mt-4 flex flex-col space-y-2">
-              {universes.slice(0, 5).map((u) => (
+              {isMounted && universes.slice(0, 5).map((u) => (
                 <li key={u.id}>
                   <Link
                     href={`/shop?universe=${u.id}`}

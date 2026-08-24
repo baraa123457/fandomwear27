@@ -51,13 +51,13 @@ function rowToProduct(row: ProductRow): Product {
 
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    status: row.status,
-    sku: row.sku ?? undefined,
-    lowStockThreshold: row.low_stock_threshold,
-    featured: row.featured,
-    seoTitle: row.seo_title ?? undefined,
-    seoDescription: row.seo_description ?? undefined,
-    costPrice: row.cost_per_item !== null && row.cost_per_item !== undefined ? Number(row.cost_per_item) : undefined,
+    status: (row as any).is_active ? "active" : "draft",
+    sku: undefined,
+    lowStockThreshold: 10,
+    featured: false,
+    seoTitle: undefined,
+    seoDescription: undefined,
+    costPrice: undefined,
   };
 }
 
@@ -140,7 +140,7 @@ export async function fetchProducts(client: Client): Promise<Product[]> {
   const { data, error } = await client
     .from("products")
     .select("*")
-    .eq("status", "active")
+    .eq("is_active", true)
     .order("created_at", { ascending: false });
 
   if (error) {

@@ -96,6 +96,7 @@ function productToRow(product: Product): ProductInsert {
     video: primaryColorVideo ?? null,
     created_at: product.createdAt,
     is_active: product.status === "active",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 
 }
@@ -286,6 +287,7 @@ export async function updateProductRow(
   }
 
   if (patch.status !== undefined) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (rowPatch as any).is_active = patch.status === "active";
   }
 
@@ -386,6 +388,7 @@ export async function archiveProductRow(
 ): Promise<void> {
   const { error } = await client
     .from("products")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update({ is_active: false } as any)
     .eq("id", id);
 
@@ -401,6 +404,7 @@ export async function restoreProductRow(
 ): Promise<void> {
   const { error } = await client
     .from("products")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .update({ is_active: true } as any)
     .eq("id", id);
 

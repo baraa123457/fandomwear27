@@ -114,11 +114,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       provider,
       options: {
         redirectTo,
+        scopes: provider === "facebook" ? "email,public_profile" : undefined,
       },
     });
     if (error) return { error: error.message };
     return {};
   }, []);
+
 
 
   const signOut = useCallback(async () => {

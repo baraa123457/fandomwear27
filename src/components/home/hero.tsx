@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, useScroll, useTransform, useReducedMotion } from "framer-motion";
 import { ArrowRight, Compass } from "lucide-react";
@@ -84,6 +84,11 @@ export function Hero() {
     [products.length, avgRating, universes.length]
   );
 
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   return (
     <section ref={sectionRef} className="relative overflow-hidden border-b border-line noise-veil">
       <motion.div
@@ -101,7 +106,7 @@ export function Hero() {
         >
           <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-medium text-ink-dim">
             <span className="h-1.5 w-1.5 rounded-full bg-accent-cyan animate-glow-pulse" />
-            {products.length} original designs · {universes.length} universes
+            {isMounted ? products.length : 0} original designs · {isMounted ? universes.length : 0} universes
           </span>
 
           <h1 className="mt-6 text-balance font-display text-5xl font-extrabold leading-[1.02] tracking-tight text-ink sm:text-6xl lg:text-[4.2rem]">
@@ -133,7 +138,7 @@ export function Hero() {
           <div className="mt-12 flex items-center gap-8">
             {heroStats.map(([stat, label]) => (
               <div key={label}>
-                <p className="font-display text-2xl font-bold text-ink">{stat}</p>
+                <p className="font-display text-2xl font-bold text-ink">{isMounted ? stat : 0}</p>
                 <p className="text-xs text-ink-faint">{label}</p>
               </div>
             ))}
@@ -148,7 +153,7 @@ export function Hero() {
           transition={{ duration: 0.7, ease: "easeOut", delay: 0.15 }}
           className="relative mx-auto h-[420px] w-full max-w-md sm:h-[520px]"
         >
-          {heroTees.length === 0 ? (
+          {!isMounted || heroTees.length === 0 ? (
             <div className="relative h-full w-full">
               <div className="absolute left-2 top-6 h-64 w-52 rotate-[-9deg] rounded-3xl border border-line/40 bg-surface/40 animate-pulse" />
               <div className="absolute right-0 top-0 h-72 w-56 rotate-[7deg] rounded-3xl border border-line/40 bg-surface/60 animate-pulse" />

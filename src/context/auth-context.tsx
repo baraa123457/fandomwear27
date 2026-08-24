@@ -125,8 +125,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    setUser(null);
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // non-fatal
+    }
   }, []);
+
 
   const resetPassword = useCallback(async (email: string): Promise<AuthResult> => {
     const supabase = createClient();

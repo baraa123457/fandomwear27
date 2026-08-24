@@ -20,11 +20,26 @@ export default function AccountDashboardLayout({ children }: { children: React.R
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !user) router.replace("/account/login");
+    if (!isLoading && !user) {
+      router.replace("/account/login");
+    }
+
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted || !user) {
+        window.location.replace("/account/login");
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
   }, [isLoading, user, router]);
 
-  if (isLoading) return null;
-  if (!user) return null;
+  if (isLoading || !user) {
+    return (
+      <div className="mx-auto flex min-h-[50vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-purple/30 border-t-accent-purple" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
@@ -53,14 +68,16 @@ export default function AccountDashboardLayout({ children }: { children: React.R
               );
             })}
             <button
-              onClick={() => {
-                signOut().then(() => router.push("/"));
+              onClick={async () => {
+                await signOut();
+                window.location.replace("/account/login");
               }}
               className="mt-2 flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-faint transition-colors hover:bg-ink/5 hover:text-accent-red"
             >
               <LogOut className="h-4 w-4" />
               Sign out
             </button>
+
           </nav>
         </aside>
         <div>{children}</div>

@@ -19,11 +19,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { error } = await supabase.storage
       .from("product-media")
-      .upload(path, file, {
-        contentType: file.type || undefined,
+      .upload(path, buffer, {
+        contentType: file.type || "image/jpeg",
         cacheControl: "3600",
         upsert: true,
       });

@@ -48,15 +48,19 @@ async function uploadToProductMedia(
       body: formData,
     });
 
-    if (res.ok) {
-      const json = await res.json();
-      if (json.url) return json.url;
+    const json = await res.json();
+    if (res.ok && json.url) {
+      return json.url;
+    }
+    if (!res.ok && json.error) {
+      console.warn("[uploadToProductMedia] Server upload returned error:", json.error);
     }
   } catch (apiErr) {
     console.warn("[uploadToProductMedia] Server-side upload failed, attempting direct client upload:", apiErr);
   }
 
   // 2. Direct client upload fallback
+
   const { error } = await client.storage
     .from(PRODUCT_MEDIA_BUCKET)
     .upload(path, file, {

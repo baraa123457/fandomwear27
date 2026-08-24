@@ -18,60 +18,40 @@ interface DynamicProductLookupProps {
 export function DynamicProductLookup({
   slug,
 }: DynamicProductLookupProps) {
-  const { getProductBySlug } = useCatalog();
-
+  const { getProductBySlug, isLoading } = useCatalog();
   const contextProduct = getProductBySlug(slug);
-
-  const [product, setProduct] = useState<Product | undefined>(
-    contextProduct
-  );
-
-  const [loading, setLoading] = useState(!contextProduct);
+  const [fetchedProduct, setFetchedProduct] = useState<Product | undefined>(undefined);
+  const [fetching, setFetching] = useState(false);
 
   useEffect(() => {
-    // If CatalogContext already has the product,
-    // use it immediately.
-    if (contextProduct) {
-      setProduct(contextProduct);
-      setLoading(false);
-      return;
-    }
+    if (contextProduct) return;
 
     let cancelled = false;
+    setFetching(true);
 
     async function loadProduct() {
       try {
         const supabase = createClient();
-
-        const products = await fetchProducts(supabase);
-
+        const rows = await fetchProducts(supabase);
         if (cancelled) return;
-
-        const found = products.find((item) => item.slug === slug);
-
-        setProduct(found);
+        const found = rows.find((item) => item.slug === slug);
+        setFetchedProduct(found);
       } catch (error) {
-        console.error(
-          "[product-page] Failed to load product from Supabase:",
-          error
-        );
-
-        if (!cancelled) {
-          setProduct(undefined);
-        }
+        console.error("[product-page] Failed to load product from Supabase:", error);
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setFetching(false);
       }
     }
 
     loadProduct();
-
     return () => {
       cancelled = true;
     };
   }, [slug, contextProduct]);
+
+  const activeProduct = contextProduct ?? fetchedProduct;
+  const loading = !activeProduct && (isLoading || fetching);
+
 
   /*
    * Important:
@@ -96,7 +76,7 @@ export function DynamicProductLookup({
     );
   }
 
-  if (!product) {
+  if (!activeProduct) {
     return (
       <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col items-center justify-center px-5 py-16 text-center">
         <PackageSearch className="h-10 w-10 text-ink-faint" />
@@ -123,5 +103,5 @@ export function DynamicProductLookup({
     );
   }
 
-  return <ProductPageContent product={product} />;
+  return <ProductPageContent product={activeProduct} />;
 }

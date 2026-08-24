@@ -182,7 +182,15 @@ export function CatalogProvider({
 
   useEffect(() => {
     productsRef.current = products;
+    if (products.length > 0) {
+      try {
+        localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(products));
+      } catch {
+        /* ignore storage quota errors */
+      }
+    }
   }, [products]);
+
 
   const universesRef = useRef<UniverseInfo[]>(universes);
 

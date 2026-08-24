@@ -227,10 +227,18 @@ export async function insertProduct(
         .single();
 
       if (fallback.error) throw fallback.error;
-      return rowToProduct(fallback.data);
+      return rowToProduct({
+        ...fallback.data,
+        color_images: (row as Record<string, unknown>).color_images,
+        color_videos: (row as Record<string, unknown>).color_videos,
+        main_color: (row as Record<string, unknown>).main_color,
+        variants: (row as Record<string, unknown>).variants,
+      } as never);
     }
     throw error;
   }
+
+
 
   return rowToProduct(data);
 }
@@ -355,7 +363,14 @@ export async function updateProductRow(
     .single();
 
   if (error) {
-    if (error.code === "PGRST204" || error.message?.includes("schema cache") || error.message?.includes("featured") || error.message?.includes("cost_per_item")) {
+    if (
+      error.code === "PGRST204" ||
+      error.message?.includes("schema cache") ||
+      error.message?.includes("color_images") ||
+      error.message?.includes("variants") ||
+      error.message?.includes("featured") ||
+      error.message?.includes("cost_per_item")
+    ) {
       const sanitized = { ...rowPatch };
       delete sanitized.status;
       delete sanitized.sku;
@@ -366,6 +381,10 @@ export async function updateProductRow(
       delete sanitized.images;
       delete sanitized.video;
       delete sanitized.cost_per_item;
+      delete (sanitized as Record<string, unknown>).color_images;
+      delete (sanitized as Record<string, unknown>).color_videos;
+      delete (sanitized as Record<string, unknown>).main_color;
+      delete (sanitized as Record<string, unknown>).variants;
 
       const fallback = await client
         .from("products")
@@ -375,10 +394,18 @@ export async function updateProductRow(
         .single();
 
       if (fallback.error) throw fallback.error;
-      return rowToProduct(fallback.data);
+      return rowToProduct({
+        ...fallback.data,
+        color_images: (rowPatch as Record<string, unknown>).color_images,
+        color_videos: (rowPatch as Record<string, unknown>).color_videos,
+        main_color: (rowPatch as Record<string, unknown>).main_color,
+        variants: (rowPatch as Record<string, unknown>).variants,
+      } as never);
     }
     throw error;
   }
+
+
 
 
   return rowToProduct(data);

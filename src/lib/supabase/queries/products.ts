@@ -205,11 +205,29 @@ export async function insertProduct(
   product: Product
 ): Promise<Product> {
   const row = productToRow(product);
+  // 1. Try server-side admin products API route (uses service role key to guarantee write)
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(row),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return rowToProduct(data);
+      }
+    } catch {
+      // fallback below
+    }
+  }
+
   const { data, error } = await client
     .from("products")
     .insert(row)
     .select()
     .single();
+
 
   if (error) {
     // If the remote Supabase schema hasn't run migration 018 yet or has PGRST204 schema cache error:
@@ -369,8 +387,24 @@ export async function updateProductRow(
     (rowPatch as Record<string, unknown>).variants = patch.variants ?? [];
   }
 
-  const { data, error } = await client
+  // 1. Try server-side admin products API route (uses service role key to guarantee write)
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/admin/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, patch: rowPatch }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return rowToProduct(data);
+      }
+    } catch {
+      // fallback below
+    }
+  }
 
+  const { data, error } = await client
     .from("products")
     .update(rowPatch)
     .eq("id", id)
@@ -420,12 +454,8 @@ export async function updateProductRow(
     throw error;
   }
 
-
-
-
   return rowToProduct(data);
 }
-
 
 /**
  * Permanently delete a product.
@@ -443,6 +473,17 @@ export async function deleteProductRow(
   client: Client,
   id: string
 ): Promise<void> {
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch(`/api/admin/products?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) return;
+    } catch {
+      // fallback
+    }
+  }
+
   const { error } = await client
     .from("products")
     .delete()
@@ -450,6 +491,7 @@ export async function deleteProductRow(
 
   if (error) throw error;
 }
+
 
 /**
  * Archive a product instead of permanently deleting it.

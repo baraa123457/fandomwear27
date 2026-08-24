@@ -6,7 +6,21 @@ type Client = SupabaseClient<Database>;
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 type ProductInsert = Database["public"]["Tables"]["products"]["Insert"];
 
+function safeParseJson<T>(val: unknown): T | undefined {
+  if (val === null || val === undefined) return undefined;
+  if (typeof val === "object") return val as T;
+  if (typeof val === "string") {
+    try {
+      return JSON.parse(val) as T;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 function rowToProduct(row: ProductRow): Product {
+
   return {
     id: row.id,
     slug: row.slug,
@@ -29,11 +43,12 @@ function rowToProduct(row: ProductRow): Product {
     artIcon: row.art_icon,
     image: row.image ?? undefined,
     images: row.images ?? [],
-    colorImages: ((row as Record<string, unknown>).color_images as Record<string, string[]>) ?? undefined,
-    colorVideos: ((row as Record<string, unknown>).color_videos as Record<string, string>) ?? undefined,
+    colorImages: safeParseJson<Record<string, string[]>>((row as Record<string, unknown>).color_images),
+    colorVideos: safeParseJson<Record<string, string>>((row as Record<string, unknown>).color_videos),
     mainColor: ((row as Record<string, unknown>).main_color as string) ?? undefined,
-    variants: ((row as Record<string, unknown>).variants as Product["variants"]) ?? undefined,
+    variants: safeParseJson<Product["variants"]>((row as Record<string, unknown>).variants),
     video: row.video ?? undefined,
+
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     status: row.status,

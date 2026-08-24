@@ -330,7 +330,24 @@ export async function updateProductRow(
     rowPatch.cost_per_item = patch.costPrice ?? null;
   }
 
+  if (patch.colorImages !== undefined) {
+    (rowPatch as Record<string, unknown>).color_images = patch.colorImages ?? {};
+  }
+
+  if (patch.colorVideos !== undefined) {
+    (rowPatch as Record<string, unknown>).color_videos = patch.colorVideos ?? {};
+  }
+
+  if (patch.mainColor !== undefined) {
+    (rowPatch as Record<string, unknown>).main_color = patch.mainColor ?? null;
+  }
+
+  if (patch.variants !== undefined) {
+    (rowPatch as Record<string, unknown>).variants = patch.variants ?? [];
+  }
+
   const { data, error } = await client
+
     .from("products")
     .update(rowPatch)
     .eq("id", id)

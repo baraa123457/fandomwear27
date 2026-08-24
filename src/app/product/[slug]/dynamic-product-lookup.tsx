@@ -20,37 +20,37 @@ export function DynamicProductLookup({
 }: DynamicProductLookupProps) {
   const { getProductBySlug, isLoading } = useCatalog();
   const contextProduct = getProductBySlug(slug);
-  const [fetchedProduct, setFetchedProduct] = useState<Product | undefined>(undefined);
-  const [fetching, setFetching] = useState(false);
+  const [freshProduct, setFreshProduct] = useState<Product | undefined>(undefined);
+  const [fetching, setFetching] = useState(true);
 
   useEffect(() => {
-    if (contextProduct) return;
-
     let cancelled = false;
-    setFetching(true);
 
-    async function loadProduct() {
+    async function loadFresh() {
       try {
         const supabase = createClient();
         const rows = await fetchProducts(supabase);
         if (cancelled) return;
         const found = rows.find((item) => item.slug === slug);
-        setFetchedProduct(found);
+        if (found) {
+          setFreshProduct(found);
+        }
       } catch (error) {
-        console.error("[product-page] Failed to load product from Supabase:", error);
+        console.error("[product-page] Failed to load fresh product from Supabase:", error);
       } finally {
         if (!cancelled) setFetching(false);
       }
     }
 
-    loadProduct();
+    loadFresh();
     return () => {
       cancelled = true;
     };
-  }, [slug, contextProduct]);
+  }, [slug]);
 
-  const activeProduct = contextProduct ?? fetchedProduct;
+  const activeProduct = freshProduct ?? contextProduct;
   const loading = !activeProduct && (isLoading || fetching);
+
 
 
   /*

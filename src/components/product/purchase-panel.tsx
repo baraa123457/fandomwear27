@@ -307,7 +307,7 @@ export function PurchasePanel({
           </span>
         ) : lowStock ? (
           <span className="text-accent-red">
-            Only {product.stock} left in stock
+            Only {currentStock} left in stock
           </span>
         ) : (
           <span className="text-accent-cyan">

@@ -16,7 +16,6 @@ import {
   Upload,
   X,
   Layers,
-  Sparkles,
   Check,
 } from "lucide-react";
 import { Product, ProductVariant, Size, UniverseInfo } from "@/lib/types";
@@ -38,11 +37,12 @@ import {
   upsertProducts,
 } from "@/lib/supabase/queries/products";
 import {
-  uploadProductImage,
   uploadProductColorImage,
-  uploadProductVideo,
+  uploadProductColorVideo,
   deleteProductMediaMany,
 } from "@/lib/supabase/storage/product-media";
+
+
 
 const FALLBACK_PALETTE = ["#7C5CFF", "#22D3EE", "#FF3B4E", "#22C55E", "#F59E0B", "#EC4899", "#38BDF8", "#A855F7"];
 
@@ -101,14 +101,11 @@ function uniqueSlug(name: string, existing: Product[], excludeId?: string): stri
 const ALL_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
 const ALL_STATUSES: NonNullable<Product["status"]>[] = ["active", "draft", "archived"];
 
-const IMAGE_SLOT_LABELS = ["Image 1 — Main/front", "Image 2", "Image 3"] as const;
-
 type MediaSlot =
   | { kind: "empty" }
   | { kind: "existing"; url: string }
   | { kind: "new"; file: File; previewUrl: string };
 
-type ImageSlots = [MediaSlot, MediaSlot, MediaSlot];
 
 function generateVariants(
   colors: Product["colors"],
@@ -151,10 +148,10 @@ interface Draft {
   tags: Product["tags"];
   sizes: Size[];
   colors: Product["colors"];
-  images: ImageSlots;
-  colorImages: Record<string, [MediaSlot, MediaSlot, MediaSlot]>;
+  mainColor: string;
+  colorImages: Record<string, MediaSlot[]>;
+  colorVideos: Record<string, MediaSlot>;
   variants: ProductVariant[];
-  video: MediaSlot;
   featured: boolean;
   status: NonNullable<Product["status"]>;
   slug: string;
@@ -176,10 +173,10 @@ const emptyDraft: Draft = {
   stock: 50,
   lowStockThreshold: 10,
   tags: [],
-  images: [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }],
+  mainColor: "",
   colorImages: {},
+  colorVideos: {},
   variants: [],
-  video: { kind: "empty" },
   sizes: [...ALL_SIZES],
   colors: [],
   featured: false,
@@ -188,6 +185,7 @@ const emptyDraft: Draft = {
   seoTitle: "",
   seoDescription: "",
 };
+
 
 
 
@@ -286,16 +284,10 @@ export default function AdminProductsPage() {
   const [saving, setSaving] = useState(false);
   const [customColorHex, setCustomColorHex] = useState("#7C5CFF");
   const [bulkStockInput, setBulkStockInput] = useState("20");
-  const imageInputRefs = [
-
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-  ] as const;
-  const videoInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
   const addUniverseOption = (label: string) => {
+
     const trimmed = label.trim();
     if (!trimmed) return;
     const id = slugify(trimmed) || `universe-${Date.now()}`;
@@ -342,9 +334,8 @@ export default function AdminProductsPage() {
     if (categoryFilter === label) setCategoryFilter("all");
   };
 
-  const resolveUniverseColor = (id: string) => getUniverse(id).color;
-
   /* ---------------------------------------------------------------- */
+
   /* Search + filters — every option here reflects real, currently-    */
   /* loaded data (universes/categories from the DB-backed catalog      */
   /* lists), never a hardcoded set of business categories.             */
@@ -404,9 +395,9 @@ export default function AdminProductsPage() {
     const initialColors = PREDEFINED_COLORS.slice(0, 2);
     const initialSizes = [...ALL_SIZES];
     const initialVariants = generateVariants(initialColors, initialSizes, [], "", 20);
-    const initialColorImages: Record<string, [MediaSlot, MediaSlot, MediaSlot]> = {};
+    const initialColorImages: Record<string, MediaSlot[]> = {};
     initialColors.forEach((c) => {
-      initialColorImages[c.name] = [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }];
+      initialColorImages[c.name] = [];
     });
 
     setDraft({
@@ -414,9 +405,11 @@ export default function AdminProductsPage() {
       universe: universeOptions[0].id,
       category: categoryOptions[0] ?? "Oversized Tee",
       colors: initialColors,
+      mainColor: initialColors[0]?.name ?? "Black",
       sizes: initialSizes,
       variants: initialVariants,
       colorImages: initialColorImages,
+      colorVideos: {},
       stock: initialVariants.reduce((s, v) => s + (v.stock || 0), 0),
     });
     setSlugTouched(false);
@@ -426,19 +419,28 @@ export default function AdminProductsPage() {
 
   const openEdit = (p: Product) => {
     setEditingId(p.id);
-    const existingImages = p.images && p.images.length > 0 ? p.images : p.image ? [p.image] : [];
-    const slots: ImageSlots = [0, 1, 2].map((i): MediaSlot =>
-      existingImages[i] ? { kind: "existing", url: existingImages[i] } : { kind: "empty" }
-    ) as ImageSlots;
+    const defaultColor = p.mainColor || p.colors?.[0]?.name || "";
+    const colorImagesDraft: Record<string, MediaSlot[]> = {};
+    const colorVideosDraft: Record<string, MediaSlot> = {};
 
-    const colorImagesDraft: Record<string, [MediaSlot, MediaSlot, MediaSlot]> = {};
     (p.colors ?? []).forEach((c) => {
-      const cSlots: [MediaSlot, MediaSlot, MediaSlot] = [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }];
       const existingUrls = p.colorImages?.[c.name] ?? [];
-      existingUrls.slice(0, 3).forEach((url, idx) => {
-        cSlots[idx] = { kind: "existing", url };
-      });
-      colorImagesDraft[c.name] = cSlots;
+      const sourceUrls =
+        existingUrls.length > 0
+          ? existingUrls
+          : c.name === defaultColor && p.images && p.images.length > 0
+            ? p.images
+            : c.name === defaultColor && p.image
+              ? [p.image]
+              : [];
+
+      colorImagesDraft[c.name] = sourceUrls.map((url) => ({ kind: "existing", url }));
+
+      if (p.colorVideos?.[c.name]) {
+        colorVideosDraft[c.name] = { kind: "existing", url: p.colorVideos[c.name] };
+      } else if (c.name === defaultColor && p.video) {
+        colorVideosDraft[c.name] = { kind: "existing", url: p.video };
+      }
     });
 
     const defaultVariantStock = Math.max(
@@ -462,10 +464,10 @@ export default function AdminProductsPage() {
       stock: variants.reduce((s, v) => s + (Number(v.stock) || 0), 0) || p.stock,
       lowStockThreshold: p.lowStockThreshold ?? 10,
       tags: p.tags ?? [],
-      images: slots,
+      mainColor: defaultColor,
       colorImages: colorImagesDraft,
+      colorVideos: colorVideosDraft,
       variants,
-      video: p.video ? { kind: "existing", url: p.video } : { kind: "empty" },
       sizes: p.sizes,
       colors: p.colors ?? [],
       featured: p.featured ?? false,
@@ -475,7 +477,7 @@ export default function AdminProductsPage() {
       seoDescription: p.seoDescription ?? "",
     });
 
-    setSlugTouched(true); // editing an existing product: never silently rewrite its slug as the name changes
+    setSlugTouched(true);
     setCustomColorHex("#7C5CFF");
     setDialogOpen(true);
   };
@@ -512,9 +514,10 @@ export default function AdminProductsPage() {
       const totalStock = newVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
       const newColorImages = {
         ...d.colorImages,
-        [name]: d.colorImages[name] ?? [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }],
+        [name]: d.colorImages[name] ?? [],
       };
-      return { ...d, colors: newColors, variants: newVariants, stock: totalStock, colorImages: newColorImages };
+      const mainColor = d.mainColor || name;
+      return { ...d, colors: newColors, mainColor, variants: newVariants, stock: totalStock, colorImages: newColorImages };
     });
   };
 
@@ -525,9 +528,26 @@ export default function AdminProductsPage() {
       const newVariants = generateVariants(newColors, d.sizes, d.variants, d.sku || d.slug);
       const totalStock = newVariants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
       const newColorImages = { ...d.colorImages };
-      if (target) delete newColorImages[target.name];
-      return { ...d, colors: newColors, variants: newVariants, stock: totalStock, colorImages: newColorImages };
+      const newColorVideos = { ...d.colorVideos };
+      if (target) {
+        delete newColorImages[target.name];
+        delete newColorVideos[target.name];
+      }
+      const mainColor = d.mainColor === target?.name ? newColors[0]?.name ?? "" : d.mainColor;
+      return {
+        ...d,
+        colors: newColors,
+        mainColor,
+        variants: newVariants,
+        stock: totalStock,
+        colorImages: newColorImages,
+        colorVideos: newColorVideos,
+      };
     });
+  };
+
+  const setMainColor = (colorName: string) => {
+    setDraft((d) => ({ ...d, mainColor: colorName }));
   };
 
   const updateVariantStock = (color: string, size: Size, stock: number) => {
@@ -559,7 +579,7 @@ export default function AdminProductsPage() {
     setCustomColorHex(hex);
   };
 
-  const handleImageChange = (index: 0 | 1 | 2) => (e: ChangeEvent<HTMLInputElement>) => {
+  const handleAddColorPhoto = (colorName: string) => (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -573,71 +593,33 @@ export default function AdminProductsPage() {
     }
     const previewUrl = URL.createObjectURL(file);
     setDraft((d) => {
-      const prevSlot = d.images[index];
-      if (prevSlot.kind === "new") URL.revokeObjectURL(prevSlot.previewUrl);
-      const images = [...d.images] as ImageSlots;
-      images[index] = { kind: "new", file, previewUrl };
-      return { ...d, images };
-    });
-  };
-
-  const removeImage = (index: 0 | 1 | 2) => {
-    setDraft((d) => {
-      const prevSlot = d.images[index];
-      if (prevSlot.kind === "new") URL.revokeObjectURL(prevSlot.previewUrl);
-      const images = [...d.images] as ImageSlots;
-      images[index] = { kind: "empty" };
-      return { ...d, images };
-    });
-  };
-
-  const handleColorImageChange = (colorName: string, slotIndex: 0 | 1 | 2) => (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast({ variant: "error", title: "That's not an image file" });
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      toast({ variant: "error", title: "Image too large", description: "Max 4MB." });
-      return;
-    }
-    const previewUrl = URL.createObjectURL(file);
-    setDraft((d) => {
-      const currentSlots = d.colorImages[colorName] ?? [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }];
-      const prevSlot = currentSlots[slotIndex];
-      if (prevSlot?.kind === "new") URL.revokeObjectURL(prevSlot.previewUrl);
-      const updatedSlots = [...currentSlots] as [MediaSlot, MediaSlot, MediaSlot];
-      updatedSlots[slotIndex] = { kind: "new", file, previewUrl };
+      const current = d.colorImages[colorName] ?? [];
       return {
         ...d,
         colorImages: {
           ...d.colorImages,
-          [colorName]: updatedSlots,
+          [colorName]: [...current, { kind: "new", file, previewUrl }],
         },
       };
     });
   };
 
-  const removeColorImage = (colorName: string, slotIndex: 0 | 1 | 2) => {
+  const removeColorPhoto = (colorName: string, index: number) => {
     setDraft((d) => {
-      const currentSlots = d.colorImages[colorName] ?? [{ kind: "empty" }, { kind: "empty" }, { kind: "empty" }];
-      const prevSlot = currentSlots[slotIndex];
-      if (prevSlot?.kind === "new") URL.revokeObjectURL(prevSlot.previewUrl);
-      const updatedSlots = [...currentSlots] as [MediaSlot, MediaSlot, MediaSlot];
-      updatedSlots[slotIndex] = { kind: "empty" };
+      const current = d.colorImages[colorName] ?? [];
+      const slot = current[index];
+      if (slot?.kind === "new") URL.revokeObjectURL(slot.previewUrl);
       return {
         ...d,
         colorImages: {
           ...d.colorImages,
-          [colorName]: updatedSlots,
+          [colorName]: current.filter((_, i) => i !== index),
         },
       };
     });
   };
 
-  const handleVideoChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleColorVideoChange = (colorName: string) => (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -651,31 +633,44 @@ export default function AdminProductsPage() {
     }
     const previewUrl = URL.createObjectURL(file);
     setDraft((d) => {
-      if (d.video.kind === "new") URL.revokeObjectURL(d.video.previewUrl);
-      return { ...d, video: { kind: "new", file, previewUrl } };
+      const prev = d.colorVideos[colorName];
+      if (prev?.kind === "new") URL.revokeObjectURL(prev.previewUrl);
+      return {
+        ...d,
+        colorVideos: {
+          ...d.colorVideos,
+          [colorName]: { kind: "new", file, previewUrl },
+        },
+      };
     });
   };
 
-  const removeVideo = () => {
+  const removeColorVideo = (colorName: string) => {
     setDraft((d) => {
-      if (d.video.kind === "new") URL.revokeObjectURL(d.video.previewUrl);
-      return { ...d, video: { kind: "empty" } };
+      const prev = d.colorVideos[colorName];
+      if (prev?.kind === "new") URL.revokeObjectURL(prev.previewUrl);
+      const nextVideos = { ...d.colorVideos };
+      delete nextVideos[colorName];
+      return {
+        ...d,
+        colorVideos: nextVideos,
+      };
     });
   };
 
   useEffect(() => {
     if (dialogOpen) return;
-    draft.images.forEach((slot) => {
-      if (slot.kind === "new") URL.revokeObjectURL(slot.previewUrl);
-    });
     Object.values(draft.colorImages).forEach((slots) => {
       slots.forEach((slot) => {
         if (slot.kind === "new") URL.revokeObjectURL(slot.previewUrl);
       });
     });
-    if (draft.video.kind === "new") URL.revokeObjectURL(draft.video.previewUrl);
+    Object.values(draft.colorVideos).forEach((slot) => {
+      if (slot?.kind === "new") URL.revokeObjectURL(slot.previewUrl);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen]);
+
 
 
   /* ---------------------------------------------------------------- */
@@ -748,20 +743,10 @@ export default function AdminProductsPage() {
     const uploadedThisAttempt: string[] = [];
 
     try {
-      const finalImages: string[] = [];
-      for (let i = 0; i < draft.images.length; i++) {
-        const slot = draft.images[i];
-        if (slot.kind === "new") {
-          const url = await uploadProductImage(supabase, productId, i as 0 | 1 | 2, slot.file);
-          uploadedThisAttempt.push(url);
-          finalImages.push(url);
-        } else if (slot.kind === "existing") {
-          finalImages.push(slot.url);
-        }
-      }
-
-      // Upload color-specific photos for each color variant
+      // Upload color-specific photos and videos for each color variant
       const finalColorImages: Record<string, string[]> = {};
+      const finalColorVideos: Record<string, string> = {};
+
       for (const color of draft.colors) {
         const slots = draft.colorImages[color.name] ?? [];
         const colorUrls: string[] = [];
@@ -778,36 +763,47 @@ export default function AdminProductsPage() {
         if (colorUrls.length > 0) {
           finalColorImages[color.name] = colorUrls;
         }
-      }
 
-      // If no general product photos were uploaded, use the first color's photos as main photos
-      if (finalImages.length === 0) {
-        const firstColorName = draft.colors[0]?.name;
-        if (firstColorName && finalColorImages[firstColorName]?.length > 0) {
-          finalImages.push(...finalColorImages[firstColorName]);
+        // Color video
+        const videoSlot = draft.colorVideos[color.name];
+        if (videoSlot?.kind === "new") {
+          const vUrl = await uploadProductColorVideo(supabase, productId, color.name, videoSlot.file);
+          uploadedThisAttempt.push(vUrl);
+          finalColorVideos[color.name] = vUrl;
+        } else if (videoSlot?.kind === "existing") {
+          finalColorVideos[color.name] = videoSlot.url;
         }
       }
 
-      let finalVideo: string | null = null;
-      if (draft.video.kind === "new") {
-        finalVideo = await uploadProductVideo(supabase, productId, draft.video.file);
-        uploadedThisAttempt.push(finalVideo);
-      } else if (draft.video.kind === "existing") {
-        finalVideo = draft.video.url;
-      }
+      const primaryColor = draft.mainColor || draft.colors[0]?.name || "";
+      const primaryImages =
+        (primaryColor && finalColorImages[primaryColor]) ||
+        Object.values(finalColorImages)[0] ||
+        [];
+      const primaryVideo =
+        (primaryColor && finalColorVideos[primaryColor]) ||
+        Object.values(finalColorVideos)[0] ||
+        null;
 
       const existing = editingId ? products.find((p) => p.id === editingId) : undefined;
-      const existingImageUrls = existing
-        ? existing.images && existing.images.length > 0
-          ? existing.images
-          : existing.image
-            ? [existing.image]
-            : []
-        : [];
-      const staleUrls: Array<string | null | undefined> = [
-        ...existingImageUrls.filter((url) => !finalImages.includes(url)),
-        existing?.video && existing.video !== finalVideo ? existing.video : undefined,
-      ];
+      const existingAllUrls: string[] = [];
+      if (existing?.colorImages) {
+        Object.values(existing.colorImages).forEach((urls) => existingAllUrls.push(...urls));
+      }
+      if (existing?.images) existingAllUrls.push(...existing.images);
+      if (existing?.image) existingAllUrls.push(existing.image);
+      if (existing?.video) existingAllUrls.push(existing.video);
+      if (existing?.colorVideos) {
+        Object.values(existing.colorVideos).forEach((vUrl) => existingAllUrls.push(vUrl));
+      }
+
+      const newAllUrls = new Set<string>();
+      Object.values(finalColorImages).forEach((urls) => urls.forEach((u) => newAllUrls.add(u)));
+      Object.values(finalColorVideos).forEach((u) => newAllUrls.add(u));
+      primaryImages.forEach((u) => newAllUrls.add(u));
+      if (primaryVideo) newAllUrls.add(primaryVideo);
+
+      const staleUrls = existingAllUrls.filter((url) => url && !newAllUrls.has(url));
 
       const sharedPatch = {
         name: draft.name,
@@ -825,18 +821,18 @@ export default function AdminProductsPage() {
         tags: draft.tags,
         sizes: draft.sizes,
         colors: draft.colors,
-        images: finalImages,
-        image: finalImages[0],
+        mainColor: primaryColor,
         colorImages: finalColorImages,
+        colorVideos: finalColorVideos,
+        images: primaryImages,
+        image: primaryImages[0] ?? undefined,
+        video: primaryVideo,
         variants: draft.variants,
-        video: finalVideo,
         featured: draft.featured,
         status: draft.status,
         seoTitle: draft.seoTitle.trim() || undefined,
         seoDescription: draft.seoDescription.trim() || undefined,
       };
-
-
 
       if (editingId) {
         await persistUpdate(editingId, sharedPatch);
@@ -857,6 +853,7 @@ export default function AdminProductsPage() {
       if (staleUrls.length > 0) {
         void deleteProductMediaMany(supabase, staleUrls);
       }
+
 
       setDialogOpen(false);
     } catch (err) {
@@ -1474,152 +1471,175 @@ export default function AdminProductsPage() {
                   )}
                 </FormSection>
 
-                <FormSection title="Media & Color Galleries">
-                  {/* Color-specific Photos (Shopify Style) */}
-                  {draft.colors.length > 0 && (
-                    <div className="rounded-2xl border border-accent-purple/30 bg-accent-purple/5 p-4">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-accent-purple" />
-                        <span className="text-xs font-bold text-ink">Photos per color (Shopify style)</span>
-                      </div>
-                      <p className="mt-1 text-[11px] text-ink-faint">
-                        Upload specific photos for each color. When a shopper clicks on that color, the gallery will switch to these photos.
-                      </p>
+                <FormSection title="Media & Color Galleries (Shopify Style)">
+                  {draft.colors.length > 0 ? (
+                    <div className="space-y-4">
+                      {draft.colors.map((color) => {
+                        const photos = draft.colorImages[color.name] ?? [];
+                        const isMain = draft.mainColor === color.name || (!draft.mainColor && draft.colors[0]?.name === color.name);
+                        const videoSlot = draft.colorVideos[color.name];
 
-                      <div className="mt-3 space-y-4">
-                        {draft.colors.map((color) => {
-                          const slots = draft.colorImages[color.name] ?? [
-                            { kind: "empty" },
-                            { kind: "empty" },
-                            { kind: "empty" },
-                          ];
-                          return (
-                            <div key={color.hex} className="rounded-xl border border-line bg-surface p-3.5 shadow-sm">
-                              <div className="flex items-center gap-2 mb-2.5">
+                        return (
+                          <div
+                            key={color.hex}
+                            className={cn(
+                              "rounded-2xl border p-4 transition-all shadow-sm",
+                              isMain
+                                ? "border-accent-purple/50 bg-accent-purple/5 ring-1 ring-accent-purple/30"
+                                : "border-line bg-surface"
+                            )}
+                          >
+                            {/* Color Header */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line/60 pb-3">
+                              <div className="flex items-center gap-2.5">
                                 <span
-                                  className="h-4 w-4 rounded-full border border-line/60 shrink-0"
+                                  className="h-5 w-5 rounded-full border border-line/60 shadow-sm shrink-0"
                                   style={{ backgroundColor: color.hex }}
                                 />
-                                <span className="text-xs font-bold text-ink">{color.name} Gallery</span>
-                                <span className="font-mono text-[10px] text-ink-faint">({color.hex})</span>
+                                <div>
+                                  <span className="text-sm font-bold text-ink">{color.name}</span>
+                                  <span className="ml-2 font-mono text-[10px] text-ink-faint uppercase">
+                                    {color.hex}
+                                  </span>
+                                </div>
                               </div>
 
-                              <div className="grid grid-cols-3 gap-3">
-                                {([0, 1, 2] as const).map((idx) => {
-                                  const slot = slots[idx];
-                                  const slotSrc = slot ? slotPreviewSrc(slot) : undefined;
+                              {/* Main Color Toggle */}
+                              <button
+                                type="button"
+                                onClick={() => setMainColor(color.name)}
+                                className={cn(
+                                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all",
+                                  isMain
+                                    ? "border border-accent-yellow/40 bg-accent-yellow/15 text-accent-yellow shadow-xs"
+                                    : "border border-line bg-void text-ink-faint hover:border-line-dim hover:text-ink"
+                                )}
+                              >
+                                <Star
+                                  className={cn(
+                                    "h-3.5 w-3.5",
+                                    isMain ? "fill-accent-yellow text-accent-yellow" : "text-ink-faint"
+                                  )}
+                                />
+                                {isMain ? "⭐ Main / Cover Color" : "Set as Main Color"}
+                              </button>
+                            </div>
+
+                            {/* Dynamic Photos List */}
+                            <div className="mt-3.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-ink-dim uppercase tracking-wider">
+                                  Photos ({photos.length} uploaded)
+                                </span>
+                                {isMain && photos.length > 0 && (
+                                  <span className="font-mono text-[10px] text-accent-purple font-medium">
+                                    Photo #1 is storefront thumbnail
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                                {photos.map((slot, idx) => {
+                                  const src = slotPreviewSrc(slot);
                                   return (
-                                    <div key={idx} className="flex flex-col gap-1.5">
-                                      <span className="text-[10px] font-medium text-ink-faint">
-                                        {color.name} Photo {idx + 1}
-                                      </span>
-                                      <div className="relative aspect-square w-full rounded-xl border border-line bg-void overflow-hidden flex items-center justify-center">
-                                        {slotSrc ? (
-                                          // eslint-disable-next-line @next/next/no-img-element
-                                          <img
-                                            src={slotSrc}
-                                            alt={`${color.name} ${idx + 1}`}
-                                            className="h-full w-full object-cover"
-                                          />
-                                        ) : (
-                                          <span className="text-[10px] text-ink-faint font-mono">Empty</span>
-                                        )}
-                                      </div>
-                                      <label className="cursor-pointer inline-flex items-center justify-center rounded-lg border border-line bg-void px-2 py-1 text-[11px] font-medium text-ink hover:border-ink-faint transition-colors text-center">
-                                        <Upload className="h-3 w-3 mr-1" /> {slot?.kind !== "empty" ? "Replace" : "Upload"}
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          onChange={handleColorImageChange(color.name, idx)}
-                                          className="hidden"
+                                    <div
+                                      key={idx}
+                                      className="group relative aspect-square rounded-xl border border-line bg-void overflow-hidden flex items-center justify-center shadow-xs"
+                                    >
+                                      {src && (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src={src}
+                                          alt={`${color.name} ${idx + 1}`}
+                                          className="h-full w-full object-cover"
                                         />
-                                      </label>
-                                      {slot?.kind !== "empty" && (
-                                        <button
-                                          type="button"
-                                          onClick={() => removeColorImage(color.name, idx)}
-                                          className="text-[10px] text-ink-faint hover:text-accent-red transition-colors flex items-center justify-center gap-1 py-0.5"
-                                        >
-                                          <X className="h-2.5 w-2.5" /> Remove
-                                        </button>
                                       )}
+                                      <button
+                                        type="button"
+                                        onClick={() => removeColorPhoto(color.name, idx)}
+                                        className="absolute top-1 right-1 h-6 w-6 rounded-full bg-void/90 text-ink-faint hover:text-accent-red hover:bg-void flex items-center justify-center transition-all opacity-80 group-hover:opacity-100 shadow-md"
+                                        title="Delete photo"
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                      </button>
+                                      <span className="absolute bottom-1 left-1 rounded bg-void/80 px-1.5 py-0.5 font-mono text-[9px] text-ink-faint backdrop-blur-xs">
+                                        #{idx + 1}
+                                      </span>
                                     </div>
                                   );
                                 })}
+
+                                {/* Add Photo Button (Dynamic) */}
+                                <label className="group aspect-square cursor-pointer rounded-xl border-2 border-dashed border-line bg-void/40 p-2 transition-all hover:border-accent-purple hover:bg-accent-purple/5 flex flex-col items-center justify-center gap-1.5 text-center">
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface text-ink-dim transition-colors group-hover:bg-accent-purple/20 group-hover:text-accent-purple">
+                                    <Plus className="h-4 w-4" />
+                                  </div>
+                                  <span className="text-[11px] font-medium text-ink-dim transition-colors group-hover:text-accent-purple">
+                                    + Add photo
+                                  </span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleAddColorPhoto(color.name)}
+                                    className="hidden"
+                                  />
+                                </label>
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
 
-                  <div>
-                    <span className="text-xs font-medium text-ink-dim">General product images</span>
-                    <p className="mt-1 text-[11px] text-ink-faint">
-                      General/fallback photos for this product. Image 1 is the main storefront thumbnail.
-                    </p>
-                    <div className="mt-1.5 grid grid-cols-3 gap-3">
-                      {([0, 1, 2] as const).map((index) => {
-                        const slot = draft.images[index];
-                        const slotSrc = slotPreviewSrc(slot);
-                        return (
-                          <div key={index} className="flex flex-col gap-1.5">
-                            <span className="text-[11px] font-medium text-ink-faint">{IMAGE_SLOT_LABELS[index]}</span>
-                            <ProductVisual
-                              image={slotSrc}
-                              color={resolveUniverseColor(draft.universe)}
-                              icon={DEFAULT_ART_ICON}
-                              className="aspect-square w-full"
-                            />
-                            <input
-                              ref={imageInputRefs[index]}
-                              type="file"
-                              accept="image/*"
-                              onChange={handleImageChange(index)}
-                              className="hidden"
-                            />
-                            <Button type="button" variant="outline" size="sm" onClick={() => imageInputRefs[index].current?.click()}>
-                              <Upload className="h-3.5 w-3.5" /> {slot.kind !== "empty" ? "Replace" : "Upload"}
-                            </Button>
-                            {slot.kind !== "empty" && (
-                              <Button type="button" variant="ghost" size="sm" onClick={() => removeImage(index)}>
-                                <X className="h-3.5 w-3.5" /> Remove
-                              </Button>
-                            )}
+                            {/* Video for this specific color */}
+                            <div className="mt-4 pt-3.5 border-t border-line/60">
+                              <span className="text-xs font-semibold text-ink-dim uppercase tracking-wider">
+                                Video preview for {color.name} (Optional)
+                              </span>
+                              <div className="mt-2 flex items-center gap-3">
+                                {videoSlot && videoSlot.kind !== "empty" ? (
+                                  <div className="relative h-20 w-32 shrink-0 rounded-xl border border-line bg-void overflow-hidden shadow-xs">
+                                    <video
+                                      src={slotPreviewSrc(videoSlot)}
+                                      controls
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-xl border border-dashed border-line text-ink-faint bg-void/40">
+                                    <Film className="h-6 w-6" />
+                                  </div>
+                                )}
+                                <div className="flex flex-col gap-2">
+                                  <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-line bg-void px-3 py-1.5 text-xs font-semibold text-ink hover:border-line-dim transition-colors">
+                                    <Upload className="h-3.5 w-3.5" />{" "}
+                                    {videoSlot && videoSlot.kind !== "empty" ? "Replace video" : "Upload video"}
+                                    <input
+                                      type="file"
+                                      accept="video/*"
+                                      onChange={handleColorVideoChange(color.name)}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                  {videoSlot && videoSlot.kind !== "empty" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeColorVideo(color.name)}
+                                      className="flex items-center gap-1 text-xs text-ink-faint hover:text-accent-red transition-colors"
+                                    >
+                                      <X className="h-3 w-3" /> Remove video
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-
-                  <div>
-                    <span className="text-xs font-medium text-ink-dim">Product video</span>
-                    <p className="mt-1 text-[11px] text-ink-faint">Optional. One video max.</p>
-                    <div className="mt-1.5 flex items-start gap-3">
-                      {draft.video.kind !== "empty" ? (
-                        <video src={slotPreviewSrc(draft.video)} controls className="h-20 w-32 shrink-0 rounded-xl border border-line bg-void object-cover" />
-                      ) : (
-                        <div className="flex h-20 w-32 shrink-0 items-center justify-center rounded-xl border border-dashed border-line text-ink-faint">
-                          <Film className="h-6 w-6" />
-                        </div>
-                      )}
-                      <div className="flex flex-1 flex-col gap-1.5">
-                        <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" />
-                        <div className="flex flex-wrap gap-2">
-                          <Button type="button" variant="outline" size="sm" onClick={() => videoInputRef.current?.click()}>
-                            <Upload className="h-3.5 w-3.5" /> {draft.video.kind !== "empty" ? "Replace video" : "Upload video"}
-                          </Button>
-                          {draft.video.kind !== "empty" && (
-                            <Button type="button" variant="ghost" size="sm" onClick={removeVideo}>
-                              <X className="h-3.5 w-3.5" /> Remove
-                            </Button>
-                          )}
-                        </div>
-                      </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-line p-6 text-center text-xs text-ink-faint">
+                      Please select or add at least one color above to upload photos and videos.
                     </div>
-                  </div>
+                  )}
                 </FormSection>
+
 
                 <FormSection title="Store settings">
                   <div className="grid grid-cols-2 gap-3.5">

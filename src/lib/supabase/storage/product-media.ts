@@ -92,6 +92,18 @@ export async function uploadProductColorImage(
   return uploadToProductMedia(client, path, file);
 }
 
+/** Uploads a video specific to a color variant (e.g. Red, Black). */
+export async function uploadProductColorVideo(
+  client: Client,
+  productId: string,
+  colorName: string,
+  file: File
+): Promise<string> {
+  const ext = fileExtension(file.name, "mp4");
+  const cleanColor = colorName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const path = `products/${productId}/color-${cleanColor}-video-${uniqueSuffix()}.${ext}`;
+  return uploadToProductMedia(client, path, file);
+}
 
 /** Uploads the (single, optional) product video. */
 export async function uploadProductVideo(
@@ -103,6 +115,7 @@ export async function uploadProductVideo(
   const path = `products/${productId}/video-${uniqueSuffix()}.${ext}`;
   return uploadToProductMedia(client, path, file);
 }
+
 
 /**
  * Recovers the Storage object path from one of our own public URLs, e.g.

@@ -49,8 +49,9 @@ export function ProductPageContent({
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [selectedColor, setSelectedColor] = useState(
-    product.colors?.[0]?.name ?? "Black"
+    product.mainColor || product.colors?.[0]?.name || "Black"
   );
+
 
   // Check if current user has an order containing this product that has been delivered
 

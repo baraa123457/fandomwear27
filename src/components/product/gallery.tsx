@@ -19,9 +19,8 @@ type MediaItem =
   | { type: "image"; src: string; label: string }
   | { type: "video"; src: string; label: string };
 
-const ANGLE_LABELS = ["Front", "Back", "Detail"];
-
 function formatTime(seconds: number) {
+
   if (isNaN(seconds)) return "0:00";
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -253,25 +252,44 @@ export function ProductGallery({
     ) {
       return product.colorImages[selectedColor].filter(Boolean);
     }
-    // 2. Fall back to general product images
+    // 2. Main color gallery fallback
+    if (
+      product.mainColor &&
+      product.colorImages &&
+      Array.isArray(product.colorImages[product.mainColor]) &&
+      product.colorImages[product.mainColor].length > 0
+    ) {
+      return product.colorImages[product.mainColor].filter(Boolean);
+    }
+    // 3. Fall back to general product images
     if (Array.isArray(product.images) && product.images.length > 0) {
-      return product.images.filter(Boolean).slice(0, 3);
+      return product.images.filter(Boolean);
     }
     return product.image ? [product.image] : [];
-  }, [product.images, product.image, product.colorImages, selectedColor]);
+  }, [product.images, product.image, product.colorImages, product.mainColor, selectedColor]);
 
+  const activeVideo = useMemo(() => {
+    if (selectedColor && product.colorVideos?.[selectedColor]) {
+      return product.colorVideos[selectedColor];
+    }
+    if (product.mainColor && product.colorVideos?.[product.mainColor]) {
+      return product.colorVideos[product.mainColor];
+    }
+    return product.video || null;
+  }, [selectedColor, product.colorVideos, product.mainColor, product.video]);
 
   const media: MediaItem[] = useMemo(() => {
     const items: MediaItem[] = photos.map((src, i) => ({
       type: "image",
       src,
-      label: ANGLE_LABELS[i] ?? `Photo ${i + 1}`,
+      label: `Photo ${i + 1}`,
     }));
-    if (product.video) {
-      items.push({ type: "video", src: product.video, label: "Video" });
+    if (activeVideo) {
+      items.push({ type: "video", src: activeVideo, label: "Video Preview" });
     }
     return items;
-  }, [photos, product.video]);
+  }, [photos, activeVideo]);
+
 
   const activeIndex = active < media.length ? active : 0;
   const activeItem = media[activeIndex];

@@ -23,8 +23,9 @@ export function PurchasePanel({
   const sizes = product.sizes ?? [];
 
   const [internalColor, setInternalColor] = useState(
-    colors[0]?.name ?? "Black"
+    product.mainColor || colors[0]?.name || "Black"
   );
+
   const color = selectedColor ?? internalColor;
 
   const handleColorSelect = (colorName: string) => {

@@ -30,6 +30,8 @@ function rowToProduct(row: ProductRow): Product {
     image: row.image ?? undefined,
     images: row.images ?? [],
     colorImages: ((row as Record<string, unknown>).color_images as Record<string, string[]>) ?? undefined,
+    colorVideos: ((row as Record<string, unknown>).color_videos as Record<string, string>) ?? undefined,
+    mainColor: ((row as Record<string, unknown>).main_color as string) ?? undefined,
     variants: ((row as Record<string, unknown>).variants as Product["variants"]) ?? undefined,
     video: row.video ?? undefined,
     createdAt: row.created_at,
@@ -45,6 +47,13 @@ function rowToProduct(row: ProductRow): Product {
 }
 
 function productToRow(product: Product): ProductInsert {
+  const primaryColor = product.mainColor || product.colors?.[0]?.name;
+  const primaryColorImages = primaryColor && product.colorImages?.[primaryColor] ? product.colorImages[primaryColor] : [];
+  const primaryColorVideo = primaryColor && product.colorVideos?.[primaryColor] ? product.colorVideos[primaryColor] : product.video;
+
+  const fallbackImage = primaryColorImages[0] ?? product.images?.[0] ?? product.image ?? null;
+  const fallbackImages = primaryColorImages.length > 0 ? primaryColorImages : product.images ?? (product.image ? [product.image] : []);
+
   return {
     id: product.id,
     slug: product.slug,
@@ -62,13 +71,13 @@ function productToRow(product: Product): ProductInsert {
     stock: product.stock,
     tags: product.tags,
     art_icon: product.artIcon,
-    // `image` mirrors images[0] for backward compatibility with display
-    // components that only read the single legacy field.
-    image: product.images?.[0] ?? product.image ?? null,
-    images: product.images ?? (product.image ? [product.image] : []),
+    image: fallbackImage,
+    images: fallbackImages,
     color_images: product.colorImages ?? {},
+    color_videos: product.colorVideos ?? {},
+    main_color: primaryColor ?? null,
     variants: product.variants ?? [],
-    video: product.video ?? null,
+    video: primaryColorVideo ?? null,
     created_at: product.createdAt,
     status: product.status ?? "active",
     sku: product.sku ?? null,
@@ -77,8 +86,14 @@ function productToRow(product: Product): ProductInsert {
     seo_title: product.seoTitle ?? null,
     seo_description: product.seoDescription ?? null,
     cost_per_item: product.costPrice ?? null,
-  } as ProductInsert & { color_images?: Record<string, string[]>; variants?: Product["variants"] };
+  } as ProductInsert & {
+    color_images?: Record<string, string[]>;
+    color_videos?: Record<string, string>;
+    main_color?: string | null;
+    variants?: Product["variants"];
+  };
 }
+
 
 
 

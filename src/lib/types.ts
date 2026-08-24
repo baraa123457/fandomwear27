@@ -48,13 +48,18 @@ export interface Product {
    *  [main/front, second, third]. `images[0]` is always mirrored to
    *  `image`. */
   images?: string[];
-  /** Dedicated photos per color variant, mapping color name to array of image URLs e.g. { "Red": ["url1", "url2"] } */
+  /** Dedicated photos per color variant, mapping color name to array of image URLs e.g. { "Red": ["url1", "url2", "url3", "url4"] } */
   colorImages?: Record<string, string[]>;
+  /** Optional video per color variant, mapping color name to video URL e.g. { "Red": "videoUrl" } */
+  colorVideos?: Record<string, string>;
+  /** The primary default color variant shown on storefront catalog and product cards */
+  mainColor?: string;
   /** Specific variant combinations (Color x Size) with individual stock and optional SKU/price */
   variants?: ProductVariant[];
   /** Optional single product video (data URL or storage URL). Never
    *  required. */
   video?: string | null;
+
   createdAt: string;
   /** Last-modified timestamp (DB-managed via a trigger). Optional because
    *  the seed fallback array predates this field. */

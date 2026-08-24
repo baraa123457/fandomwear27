@@ -222,6 +222,19 @@ function ProductVideoPlayer({ src, poster }: { src: string; poster?: string }) {
   );
 }
 
+function getColorMedia<T>(
+  dict: Record<string, T> | undefined,
+  colorName: string | undefined
+): T | undefined {
+  if (!dict || !colorName) return undefined;
+  if (dict[colorName] !== undefined) return dict[colorName];
+  const target = colorName.trim().toLowerCase();
+  const foundKey = Object.keys(dict).find(
+    (k) => k.trim().toLowerCase() === target
+  );
+  return foundKey !== undefined ? dict[foundKey] : undefined;
+}
+
 export function ProductGallery({
   product,
   color,
@@ -244,22 +257,14 @@ export function ProductGallery({
 
   const photos = useMemo(() => {
     // 1. If color-specific gallery exists for this color, show those photos
-    if (
-      selectedColor &&
-      product.colorImages &&
-      Array.isArray(product.colorImages[selectedColor]) &&
-      product.colorImages[selectedColor].length > 0
-    ) {
-      return product.colorImages[selectedColor].filter(Boolean);
+    const colorImgs = getColorMedia(product.colorImages, selectedColor);
+    if (Array.isArray(colorImgs) && colorImgs.length > 0) {
+      return colorImgs.filter(Boolean);
     }
     // 2. Main color gallery fallback
-    if (
-      product.mainColor &&
-      product.colorImages &&
-      Array.isArray(product.colorImages[product.mainColor]) &&
-      product.colorImages[product.mainColor].length > 0
-    ) {
-      return product.colorImages[product.mainColor].filter(Boolean);
+    const mainImgs = getColorMedia(product.colorImages, product.mainColor);
+    if (Array.isArray(mainImgs) && mainImgs.length > 0) {
+      return mainImgs.filter(Boolean);
     }
     // 3. Fall back to general product images
     if (Array.isArray(product.images) && product.images.length > 0) {
@@ -269,14 +274,13 @@ export function ProductGallery({
   }, [product.images, product.image, product.colorImages, product.mainColor, selectedColor]);
 
   const activeVideo = useMemo(() => {
-    if (selectedColor && product.colorVideos?.[selectedColor]) {
-      return product.colorVideos[selectedColor];
-    }
-    if (product.mainColor && product.colorVideos?.[product.mainColor]) {
-      return product.colorVideos[product.mainColor];
-    }
+    const colorVid = getColorMedia(product.colorVideos, selectedColor);
+    if (colorVid) return colorVid;
+    const mainVid = getColorMedia(product.colorVideos, product.mainColor);
+    if (mainVid) return mainVid;
     return product.video || null;
   }, [selectedColor, product.colorVideos, product.mainColor, product.video]);
+
 
   const media: MediaItem[] = useMemo(() => {
     const items: MediaItem[] = photos.map((src, i) => ({

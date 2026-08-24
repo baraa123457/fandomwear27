@@ -57,9 +57,18 @@ export function PurchasePanel({
   const lowStock = currentStock > 0 && currentStock <= 10;
   const outOfStock = currentStock === 0;
 
+  // Helper to match color keys case-insensitively
+  const matchingColorKey = Object.keys(product.colorImages ?? {}).find(
+    (k) => k.trim().toLowerCase() === color.trim().toLowerCase()
+  );
+  const activeColorImages = matchingColorKey ? product.colorImages?.[matchingColorKey] : undefined;
+
   // Active color image for cart
   const activeColorImage =
-    product.colorImages?.[color]?.[0] ?? product.images?.[0] ?? product.image;
+    activeColorImages?.[0] ??
+    product.images?.[0] ??
+    product.image;
+
 
   const handleAdd = () => {
     if (outOfStock) return;

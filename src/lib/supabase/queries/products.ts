@@ -51,6 +51,7 @@ function rowToProduct(row: ProductRow): Product {
 
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     status: (row as any).is_active ? "active" : "draft",
     sku: undefined,
     lowStockThreshold: 10,

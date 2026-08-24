@@ -37,22 +37,35 @@ async function uploadToProductMedia(
   path: string,
   file: File
 ): Promise<string> {
+  // 1. Try server-side admin upload route (bypasses browser Storage RLS using service role)
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("path", path);
+
+    const res = await fetch("/api/admin/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.url) return json.url;
+    }
+  } catch (apiErr) {
+    console.warn("[uploadToProductMedia] Server-side upload failed, attempting direct client upload:", apiErr);
+  }
+
+  // 2. Direct client upload fallback
   const { error } = await client.storage
     .from(PRODUCT_MEDIA_BUCKET)
     .upload(path, file, {
       contentType: file.type || undefined,
       cacheControl: "3600",
-      upsert: false,
+      upsert: true,
     });
 
   if (error) {
-    // The bucket is created by supabase/migrations/20260816000014_product_media_storage.sql
-    // (infrastructure, not app code — we deliberately never create it from
-    // the client). If that migration hasn't been pushed to this project's
-    // remote database yet, Storage returns a generic "Bucket not found"
-    // that's meaningless to an admin filling out the product form. Surface
-    // something actionable instead, while preserving the original error
-    // as `cause` for anyone debugging from the console.
     if (isBucketMissingError(error)) {
       throw new Error(
         "Product media storage bucket is missing. Apply the Supabase storage migration (supabase db push) and try again.",
@@ -65,6 +78,7 @@ async function uploadToProductMedia(
   const { data } = client.storage.from(PRODUCT_MEDIA_BUCKET).getPublicUrl(path);
   return data.publicUrl;
 }
+
 
 /** Uploads one product photo for the given slot (0 = main/front, 1, 2). */
 export async function uploadProductImage(

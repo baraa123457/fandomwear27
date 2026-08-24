@@ -148,16 +148,9 @@ export async function fetchProducts(client: Client): Promise<Product[]> {
     .order("created_at", { ascending: false });
 
   if (error) {
-    if (error.code === "PGRST204" || error.message?.includes("status") || error.message?.includes("schema cache")) {
-      const fallback = await client
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (fallback.error) throw fallback.error;
-      return (fallback.data ?? []).map(rowToProduct);
-    }
     throw error;
   }
+
 
   return (data ?? []).map(rowToProduct);
 }
@@ -225,50 +218,7 @@ export async function insertProduct(
     .select()
     .single();
 
-
-  if (error) {
-    // If the remote Supabase schema hasn't run migration 018 yet or has PGRST204 schema cache error:
-    if (error.code === "PGRST204" || error.message?.includes("schema cache") || error.message?.includes("featured")) {
-      const baseRow = {
-        id: row.id,
-        slug: row.slug,
-        name: row.name,
-        universe: row.universe,
-        category: row.category,
-        price: row.price,
-        compare_at_price: row.compare_at_price,
-        description: row.description,
-        material: row.material,
-        sizes: row.sizes,
-        colors: row.colors,
-        rating: row.rating,
-        review_count: row.review_count,
-        stock: row.stock,
-        tags: row.tags,
-        art_icon: row.art_icon,
-        image: row.image,
-        created_at: row.created_at,
-      };
-
-      const fallback = await client
-        .from("products")
-        .insert(baseRow as Database["public"]["Tables"]["products"]["Insert"])
-        .select()
-        .single();
-
-      if (fallback.error) throw fallback.error;
-      return rowToProduct({
-        ...fallback.data,
-        color_images: (row as Record<string, unknown>).color_images,
-        color_videos: (row as Record<string, unknown>).color_videos,
-        main_color: (row as Record<string, unknown>).main_color,
-        variants: (row as Record<string, unknown>).variants,
-      } as never);
-    }
-    throw error;
-  }
-
-
+  if (error) throw error;
 
   return rowToProduct(data);
 }
@@ -410,50 +360,12 @@ export async function updateProductRow(
     .single();
 
   if (error) {
-    if (
-      error.code === "PGRST204" ||
-      error.message?.includes("schema cache") ||
-      error.message?.includes("color_images") ||
-      error.message?.includes("variants") ||
-      error.message?.includes("featured") ||
-      error.message?.includes("cost_per_item")
-    ) {
-      const sanitized = { ...rowPatch };
-      delete sanitized.status;
-      delete sanitized.sku;
-      delete sanitized.low_stock_threshold;
-      delete sanitized.featured;
-      delete sanitized.seo_title;
-      delete sanitized.seo_description;
-      delete sanitized.images;
-      delete sanitized.video;
-      delete sanitized.cost_per_item;
-      delete (sanitized as Record<string, unknown>).color_images;
-      delete (sanitized as Record<string, unknown>).color_videos;
-      delete (sanitized as Record<string, unknown>).main_color;
-      delete (sanitized as Record<string, unknown>).variants;
-
-      const fallback = await client
-        .from("products")
-        .update(sanitized)
-        .eq("id", id)
-        .select()
-        .single();
-
-      if (fallback.error) throw fallback.error;
-      return rowToProduct({
-        ...fallback.data,
-        color_images: (rowPatch as Record<string, unknown>).color_images,
-        color_videos: (rowPatch as Record<string, unknown>).color_videos,
-        main_color: (rowPatch as Record<string, unknown>).main_color,
-        variants: (rowPatch as Record<string, unknown>).variants,
-      } as never);
-    }
     throw error;
   }
 
   return rowToProduct(data);
 }
+
 
 /**
  * Permanently delete a product.

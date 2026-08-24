@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/database.types";
+import type { Database, Json } from "@/lib/supabase/database.types";
 import type { Product } from "@/lib/types";
 
 type Client = SupabaseClient<Database>;
@@ -43,10 +43,10 @@ function rowToProduct(row: ProductRow): Product {
     artIcon: row.art_icon,
     image: row.image ?? undefined,
     images: row.images ?? [],
-    colorImages: safeParseJson<Record<string, string[]>>((row as Record<string, unknown>).color_images),
-    colorVideos: safeParseJson<Record<string, string>>((row as Record<string, unknown>).color_videos),
-    mainColor: ((row as Record<string, unknown>).main_color as string) ?? undefined,
-    variants: safeParseJson<Product["variants"]>((row as Record<string, unknown>).variants),
+    colorImages: safeParseJson<Record<string, string[]>>(row.color_images),
+    colorVideos: safeParseJson<Record<string, string>>(row.color_videos),
+    mainColor: (row.main_color as string) ?? undefined,
+    variants: safeParseJson<Product["variants"]>(row.variants),
     video: row.video ?? undefined,
 
     createdAt: row.created_at,
@@ -60,6 +60,7 @@ function rowToProduct(row: ProductRow): Product {
     costPrice: row.cost_per_item !== null && row.cost_per_item !== undefined ? Number(row.cost_per_item) : undefined,
   };
 }
+
 
 function productToRow(product: Product): ProductInsert {
   const primaryColor = product.mainColor || product.colors?.[0]?.name;
@@ -91,7 +92,7 @@ function productToRow(product: Product): ProductInsert {
     color_images: product.colorImages ?? {},
     color_videos: product.colorVideos ?? {},
     main_color: primaryColor ?? null,
-    variants: product.variants ?? [],
+    variants: (product.variants ?? []) as unknown as Json,
     video: primaryColorVideo ?? null,
     created_at: product.createdAt,
     status: product.status ?? "active",
@@ -101,13 +102,9 @@ function productToRow(product: Product): ProductInsert {
     seo_title: product.seoTitle ?? null,
     seo_description: product.seoDescription ?? null,
     cost_per_item: product.costPrice ?? null,
-  } as ProductInsert & {
-    color_images?: Record<string, string[]>;
-    color_videos?: Record<string, string>;
-    main_color?: string | null;
-    variants?: Product["variants"];
   };
 }
+
 
 
 
@@ -372,19 +369,20 @@ export async function updateProductRow(
   }
 
   if (patch.colorImages !== undefined) {
-    (rowPatch as Record<string, unknown>).color_images = patch.colorImages ?? {};
+    rowPatch.color_images = patch.colorImages ?? {};
   }
 
   if (patch.colorVideos !== undefined) {
-    (rowPatch as Record<string, unknown>).color_videos = patch.colorVideos ?? {};
+    rowPatch.color_videos = patch.colorVideos ?? {};
   }
 
   if (patch.mainColor !== undefined) {
-    (rowPatch as Record<string, unknown>).main_color = patch.mainColor ?? null;
+    rowPatch.main_color = patch.mainColor ?? null;
   }
 
   if (patch.variants !== undefined) {
-    (rowPatch as Record<string, unknown>).variants = patch.variants ?? [];
+    rowPatch.variants = (patch.variants ?? []) as unknown as Json;
+
   }
 
   // 1. Try server-side admin products API route (uses service role key to guarantee write)

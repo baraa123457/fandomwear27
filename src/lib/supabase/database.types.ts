@@ -281,15 +281,20 @@ export type Database = {
         Row: {
           art_icon: string
           category: string
+          color_images: Json
+          color_videos: Json
           colors: Json
           compare_at_price: number | null
+          cost_per_item: number | null
           created_at: string
           description: string
           featured: boolean
           id: string
           image: string | null
           images: string[]
+          is_active: boolean | null
           low_stock_threshold: number
+          main_color: string | null
           material: string
           name: string
           price: number
@@ -305,21 +310,26 @@ export type Database = {
           tags: Database["public"]["Enums"]["product_tag"][]
           universe: string
           updated_at: string
+          variants: Json
           video: string | null
-          cost_per_item: number | null
         }
         Insert: {
           art_icon?: string
           category: string
+          color_images?: Json
+          color_videos?: Json
           colors?: Json
           compare_at_price?: number | null
+          cost_per_item?: number | null
           created_at?: string
           description?: string
           featured?: boolean
           id: string
           image?: string | null
           images?: string[]
+          is_active?: boolean | null
           low_stock_threshold?: number
+          main_color?: string | null
           material?: string
           name: string
           price: number
@@ -335,21 +345,26 @@ export type Database = {
           tags?: Database["public"]["Enums"]["product_tag"][]
           universe: string
           updated_at?: string
+          variants?: Json
           video?: string | null
-          cost_per_item?: number | null
         }
         Update: {
           art_icon?: string
           category?: string
+          color_images?: Json
+          color_videos?: Json
           colors?: Json
           compare_at_price?: number | null
+          cost_per_item?: number | null
           created_at?: string
           description?: string
           featured?: boolean
           id?: string
           image?: string | null
           images?: string[]
+          is_active?: boolean | null
           low_stock_threshold?: number
+          main_color?: string | null
           material?: string
           name?: string
           price?: number
@@ -365,8 +380,8 @@ export type Database = {
           tags?: Database["public"]["Enums"]["product_tag"][]
           universe?: string
           updated_at?: string
+          variants?: Json
           video?: string | null
-          cost_per_item?: number | null
         }
 
         Relationships: [

@@ -340,6 +340,13 @@ export function ProductGallery({
 
   return (
     <div>
+      <div className="hidden" aria-hidden="true">
+        {/* Preload all possible color images so switching colors is instant */}
+        {Object.values(product.colorImages || {}).flat().filter(Boolean).map((src) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={src} src={src} alt="" />
+        ))}
+      </div>
       <div
         ref={frameRef}
         onMouseEnter={() => !isVideoActive && setZoom(true)}

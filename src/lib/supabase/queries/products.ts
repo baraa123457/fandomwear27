@@ -95,14 +95,9 @@ function productToRow(product: Product): ProductInsert {
     variants: (product.variants ?? []) as unknown as Json,
     video: primaryColorVideo ?? null,
     created_at: product.createdAt,
-    status: product.status ?? "active",
-    sku: product.sku ?? null,
-    low_stock_threshold: product.lowStockThreshold ?? 10,
-    featured: product.featured ?? false,
-    seo_title: product.seoTitle ?? null,
-    seo_description: product.seoDescription ?? null,
-    cost_per_item: product.costPrice ?? null,
-  };
+    is_active: product.status === "active",
+  } as any;
+
 }
 
 
@@ -291,32 +286,9 @@ export async function updateProductRow(
   }
 
   if (patch.status !== undefined) {
-    rowPatch.status = patch.status;
+    (rowPatch as any).is_active = patch.status === "active";
   }
 
-  if (patch.sku !== undefined) {
-    rowPatch.sku = patch.sku ?? null;
-  }
-
-  if (patch.lowStockThreshold !== undefined) {
-    rowPatch.low_stock_threshold = patch.lowStockThreshold;
-  }
-
-  if (patch.featured !== undefined) {
-    rowPatch.featured = patch.featured;
-  }
-
-  if (patch.seoTitle !== undefined) {
-    rowPatch.seo_title = patch.seoTitle ?? null;
-  }
-
-  if (patch.seoDescription !== undefined) {
-    rowPatch.seo_description = patch.seoDescription ?? null;
-  }
-
-  if (patch.costPrice !== undefined) {
-    rowPatch.cost_per_item = patch.costPrice ?? null;
-  }
 
   if (patch.colorImages !== undefined) {
     rowPatch.color_images = patch.colorImages ?? {};
@@ -414,7 +386,7 @@ export async function archiveProductRow(
 ): Promise<void> {
   const { error } = await client
     .from("products")
-    .update({ status: "archived" })
+    .update({ is_active: false } as any)
     .eq("id", id);
 
   if (error) throw error;
@@ -429,7 +401,7 @@ export async function restoreProductRow(
 ): Promise<void> {
   const { error } = await client
     .from("products")
-    .update({ status: "active" })
+    .update({ is_active: true } as any)
     .eq("id", id);
 
   if (error) throw error;

@@ -256,31 +256,47 @@ export function ProductGallery({
   }, [selectedColor]);
 
   const photos = useMemo(() => {
-    // 1. If color-specific gallery exists for this color, show those photos
-    const colorImgs = getColorMedia(product.colorImages, selectedColor);
-    if (Array.isArray(colorImgs) && colorImgs.length > 0) {
-      return colorImgs.filter(Boolean);
+    // 1. If color-specific gallery exists for selected color, show those photos
+    if (selectedColor) {
+      const colorImgs = getColorMedia(product.colorImages, selectedColor);
+      if (Array.isArray(colorImgs) && colorImgs.length > 0) {
+        return colorImgs.filter(Boolean);
+      }
     }
-    // 2. Main color gallery fallback
-    const mainImgs = getColorMedia(product.colorImages, product.mainColor);
-    if (Array.isArray(mainImgs) && mainImgs.length > 0) {
-      return mainImgs.filter(Boolean);
+
+    // 2. Default/Main color gallery fallback ONLY when on main color or initial load
+    if (!selectedColor || selectedColor === product.mainColor) {
+      const mainImgs = getColorMedia(product.colorImages, product.mainColor);
+      if (Array.isArray(mainImgs) && mainImgs.length > 0) {
+        return mainImgs.filter(Boolean);
+      }
+      if (Array.isArray(product.images) && product.images.length > 0) {
+        return product.images.filter(Boolean);
+      }
+      return product.image ? [product.image] : [];
     }
-    // 3. Fall back to general product images
-    if (Array.isArray(product.images) && product.images.length > 0) {
-      return product.images.filter(Boolean);
-    }
-    return product.image ? [product.image] : [];
+
+    // 3. If a different color was selected without uploaded photos, return empty to show color artwork
+    return [];
   }, [product.images, product.image, product.colorImages, product.mainColor, selectedColor]);
 
   const activeVideo = useMemo(() => {
     const colorVid = getColorMedia(product.colorVideos, selectedColor);
     if (colorVid) return colorVid;
-    const mainVid = getColorMedia(product.colorVideos, product.mainColor);
-    if (mainVid) return mainVid;
-    return product.video || null;
+    if (!selectedColor || selectedColor === product.mainColor) {
+      const mainVid = getColorMedia(product.colorVideos, product.mainColor);
+      if (mainVid) return mainVid;
+      return product.video || null;
+    }
+    return null;
   }, [selectedColor, product.colorVideos, product.mainColor, product.video]);
 
+  const activeColorHex = useMemo(() => {
+    const found = product.colors?.find(
+      (c) => c.name.trim().toLowerCase() === selectedColor?.trim().toLowerCase()
+    );
+    return found?.hex || color;
+  }, [product.colors, selectedColor, color]);
 
   const media: MediaItem[] = useMemo(() => {
     const items: MediaItem[] = photos.map((src, i) => ({
@@ -293,7 +309,6 @@ export function ProductGallery({
     }
     return items;
   }, [photos, activeVideo]);
-
 
   const activeIndex = active < media.length ? active : 0;
   const activeItem = media[activeIndex];
@@ -332,7 +347,7 @@ export function ProductGallery({
           >
             <ProductVisual
               image={heroImage}
-              color={color}
+              color={activeColorHex}
               icon={product.artIcon}
               label={`${product.name}${activeItem ? ` — ${activeItem.label}` : ""}`}
               variant="hero"
@@ -343,6 +358,7 @@ export function ProductGallery({
             />
           </motion.div>
         )}
+
 
         {!isVideoActive && (
           <>

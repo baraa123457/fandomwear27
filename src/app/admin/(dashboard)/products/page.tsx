@@ -424,7 +424,10 @@ export default function AdminProductsPage() {
     const colorVideosDraft: Record<string, MediaSlot> = {};
 
     (p.colors ?? []).forEach((c) => {
-      const existingUrls = p.colorImages?.[c.name] ?? [];
+      const matchingKey = Object.keys(p.colorImages ?? {}).find(
+        (k) => k.trim().toLowerCase() === c.name.trim().toLowerCase()
+      );
+      const existingUrls = matchingKey ? p.colorImages?.[matchingKey] ?? [] : [];
       const sourceUrls =
         existingUrls.length > 0
           ? existingUrls
@@ -436,12 +439,18 @@ export default function AdminProductsPage() {
 
       colorImagesDraft[c.name] = sourceUrls.map((url) => ({ kind: "existing", url }));
 
-      if (p.colorVideos?.[c.name]) {
-        colorVideosDraft[c.name] = { kind: "existing", url: p.colorVideos[c.name] };
+      const matchingVideoKey = Object.keys(p.colorVideos ?? {}).find(
+        (k) => k.trim().toLowerCase() === c.name.trim().toLowerCase()
+      );
+      const existingVideoUrl = matchingVideoKey ? p.colorVideos?.[matchingVideoKey] : undefined;
+
+      if (existingVideoUrl) {
+        colorVideosDraft[c.name] = { kind: "existing", url: existingVideoUrl };
       } else if (c.name === defaultColor && p.video) {
         colorVideosDraft[c.name] = { kind: "existing", url: p.video };
       }
     });
+
 
     const defaultVariantStock = Math.max(
       1,

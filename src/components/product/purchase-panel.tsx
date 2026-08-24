@@ -6,7 +6,9 @@ import { Product, Size } from "@/lib/types";
 import { useCart } from "@/context/cart-context";
 import { useWishlist } from "@/context/wishlist-context";
 import { useToast } from "@/context/toast-context";
+import { useStoreSettings } from "@/context/store-settings-context";
 import { Button } from "@/components/ui/button";
+
 import { SizeGuideDialog } from "@/components/product/size-guide-dialog";
 import { formatPrice, cn } from "@/lib/utils";
 
@@ -45,6 +47,8 @@ export function PurchasePanel({
   const { addItem, open } = useCart();
   const { toggle, has } = useWishlist();
   const { toast } = useToast();
+  const { settings } = useStoreSettings();
+
 
   const isWishlisted = has(product.id);
 
@@ -329,16 +333,26 @@ export function PurchasePanel({
       <div className="flex items-center justify-between border-t border-line/60 pt-4 text-xs">
         <span className="text-ink-faint font-medium">Share this design:</span>
         <div className="flex items-center gap-2">
-          <a
-            href={`https://wa.me/?text=${encodeURIComponent(
-              `Check out the ${product.name} on FandomWear: ${typeof window !== "undefined" ? window.location.href : ""}`
-            )}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-ink-dim hover:border-emerald-500 hover:text-emerald-400 transition-colors"
-          >
-            WhatsApp
-          </a>
+          {(() => {
+            const cleanPhone = (settings?.whatsappPhone || "").replace(/[^0-9]/g, "");
+            const waHref = cleanPhone
+              ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+                  `Check out the ${product.name} on FandomWear: ${typeof window !== "undefined" ? window.location.href : ""}`
+                )}`
+              : `https://wa.me/?text=${encodeURIComponent(
+                  `Check out the ${product.name} on FandomWear: ${typeof window !== "undefined" ? window.location.href : ""}`
+                )}`;
+            return (
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-ink-dim hover:border-emerald-500 hover:text-emerald-400 transition-colors"
+              >
+                WhatsApp
+              </a>
+            );
+          })()}
 
           <button
             type="button"
@@ -354,6 +368,7 @@ export function PurchasePanel({
           </button>
         </div>
       </div>
+
     </div>
   );
 }

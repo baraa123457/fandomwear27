@@ -220,6 +220,13 @@ export default function AdminSettingsPage() {
               placeholder="+20 100 000 0000"
             />
           </Field>
+          <Field label="WhatsApp Support Phone" hint="Used for customer support chat and WhatsApp share button (e.g. +201000000000)">
+            <TextInput
+              value={draft.whatsappPhone}
+              onChange={(v) => patch("whatsappPhone", v)}
+              placeholder="+20 100 000 0000"
+            />
+          </Field>
           <Field label="Contact Address" hint="Store or warehouse address">
             <TextInput
               value={draft.contactAddress}
@@ -229,6 +236,7 @@ export default function AdminSettingsPage() {
           </Field>
         </div>
       </section>
+
 
       {/* Commerce Settings */}
       <section className="rounded-2xl border border-line bg-surface p-6">

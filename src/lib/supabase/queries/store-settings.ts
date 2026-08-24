@@ -7,6 +7,7 @@ export interface StoreSettings {
   storeName: string;
   storeEmail: string;
   contactPhone: string;
+  whatsappPhone: string;
   contactAddress: string;
   /** Always "EGP" — display-only. The application enforces EGP at runtime. */
   currency: string;
@@ -22,7 +23,8 @@ const STORAGE_KEY = "fandomwear:store-settings";
 const DEFAULT_SETTINGS: StoreSettings = {
   storeName: "FandomWear",
   storeEmail: "hello@fandomwear.com",
-  contactPhone: "",
+  contactPhone: "+20 100 000 0000",
+  whatsappPhone: "+20 100 000 0000",
   contactAddress: "",
   currency: "EGP",
   shippingFlatRate: 50.0,
@@ -36,10 +38,12 @@ const DEFAULT_SETTINGS: StoreSettings = {
 function rowToSettings(
   row: Database["public"]["Tables"]["store_settings"]["Row"]
 ): StoreSettings {
+  const custom = row as Record<string, unknown>;
   return {
     storeName: row.store_name,
     storeEmail: row.store_email,
     contactPhone: row.contact_phone,
+    whatsappPhone: custom.whatsapp_phone ? String(custom.whatsapp_phone) : row.contact_phone || "+20 100 000 0000",
     contactAddress: row.contact_address,
     currency: row.currency,
     shippingFlatRate: Number(row.shipping_flat_rate),
@@ -66,6 +70,7 @@ export async function fetchStoreSettings(client: Client): Promise<StoreSettings>
     if (error) {
       if (
         error.code === "PGRST205" ||
+        error.code === "PGRST204" ||
         error.message?.includes("schema cache") ||
         error.message?.includes("store_settings")
       ) {
@@ -101,6 +106,7 @@ export async function updateStoreSettings(
   if (patch.storeName !== undefined) rowPatch.store_name = patch.storeName;
   if (patch.storeEmail !== undefined) rowPatch.store_email = patch.storeEmail;
   if (patch.contactPhone !== undefined) rowPatch.contact_phone = patch.contactPhone;
+  if (patch.whatsappPhone !== undefined) (rowPatch as Record<string, unknown>).whatsapp_phone = patch.whatsappPhone;
   if (patch.contactAddress !== undefined) rowPatch.contact_address = patch.contactAddress;
   // currency is display-only — never written back from the UI
   if (patch.shippingFlatRate !== undefined) rowPatch.shipping_flat_rate = patch.shippingFlatRate;
@@ -123,9 +129,14 @@ export async function updateStoreSettings(
     if (error) {
       if (
         error.code === "PGRST205" ||
+        error.code === "PGRST204" ||
         error.message?.includes("schema cache") ||
-        error.message?.includes("store_settings")
+        error.message?.includes("store_settings") ||
+        error.message?.includes("whatsapp_phone")
       ) {
+        const sanitized = { ...rowPatch };
+        delete (sanitized as Record<string, unknown>).whatsapp_phone;
+        await client.from("store_settings").update(sanitized).eq("id", 1);
         if (typeof window !== "undefined") {
           const current = localStorage.getItem(STORAGE_KEY);
           const parsed = current ? JSON.parse(current) : DEFAULT_SETTINGS;
@@ -147,3 +158,4 @@ export async function updateStoreSettings(
 }
 
 export { DEFAULT_SETTINGS };
+

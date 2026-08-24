@@ -8,7 +8,9 @@ import { Check, Clock, Mail, MessageCircle, Send, Sparkles } from "lucide-react"
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { Dropdown } from "@/components/shared/dropdown";
 import { Button } from "@/components/ui/button";
+import { useStoreSettings } from "@/context/store-settings-context";
 import { fadeInUp, revealOnScroll } from "@/lib/motion";
+
 
 const topics = [
   { value: "order", label: "An order I placed" },
@@ -19,8 +21,10 @@ const topics = [
 ];
 
 export default function ContactView() {
+  const { settings } = useStoreSettings();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+
   const [orderId, setOrderId] = useState("");
   const [topic, setTopic] = useState("order");
   const [message, setMessage] = useState("");
@@ -170,14 +174,22 @@ export default function ContactView() {
             <p className="mt-1.5 text-xs text-ink-dim leading-relaxed">
               Need immediate help with sizing, address changes, or live order tracking?
             </p>
-            <a
-              href="https://wa.me/201000000000?text=Hello%20FandomWear%2C%20I%20have%20a%20question%20about%20my%20order"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-void transition-transform hover:scale-[1.02] active:scale-95 shadow-lg shadow-emerald-500/20"
-            >
-              <MessageCircle className="h-4 w-4 fill-current" /> Chat on WhatsApp
-            </a>
+            {(() => {
+              const cleanPhone = (settings.whatsappPhone || settings.contactPhone || "").replace(/[^0-9]/g, "");
+              const waHref = `https://wa.me/${cleanPhone || "201000000000"}?text=${encodeURIComponent(
+                "Hello FandomWear, I have a question about my order"
+              )}`;
+              return (
+                <a
+                  href={waHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-xs font-bold text-void transition-transform hover:scale-[1.02] active:scale-95 shadow-lg shadow-emerald-500/20"
+                >
+                  <MessageCircle className="h-4 w-4 fill-current" /> Chat on WhatsApp
+                </a>
+              );
+            })()}
           </div>
 
           <div className="rounded-3xl border border-line bg-surface p-6">
@@ -185,10 +197,14 @@ export default function ContactView() {
               <Mail className="h-5 w-5" />
             </div>
             <h3 className="mt-4 text-sm font-bold text-ink">Direct Email</h3>
-            <a href="mailto:support@fandomwear.store" className="mt-1 block text-xs text-ink-dim hover:text-accent-cyan">
-              support@fandomwear.store
+            <a
+              href={`mailto:${settings.storeEmail || "support@fandomwear.store"}`}
+              className="mt-1 block text-xs text-ink-dim hover:text-accent-cyan"
+            >
+              {settings.storeEmail || "support@fandomwear.store"}
             </a>
           </div>
+
 
           <div className="rounded-3xl border border-line bg-surface p-6">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-cyan/15 text-accent-cyan">
